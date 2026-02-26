@@ -1,0 +1,61 @@
+name: Daily FX Rate Refresh
+
+on:
+  schedule:
+    # Run at 06:00 UTC every day
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      base_currency:
+        description: 'Base currency (default: USD)'
+        required: false
+        default: 'USD'
+
+jobs:
+  refresh-fx-rates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh FX rates via Edge Function
+        run: |
+          CURRENCY="${{ github.event.inputs.base_currency || 'USD' }}"
+          DATE=$(date +%Y-%m-%d)
+
+          echo "Refreshing FX rates for ${CURRENCY} on ${DATE}..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -d "{\"base_currency\": \"${CURRENCY}\", \"date\": \"${DATE}\"}" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/fx-refresh-daily-rates")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response (${HTTP_CODE}): ${BODY}"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::FX refresh failed with HTTP ${HTTP_CODE}: ${BODY}"
+            exit 1
+          fi
+
+          echo "FX rates refreshed successfully!"
+
+      # Also refresh common secondary currencies
+      - name: Refresh EUR rates
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -d "{\"base_currency\": \"EUR\", \"date\": \"${DATE}\"}" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/fx-refresh-daily-rates"
+
+      - name: Refresh GBP rates
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -d "{\"base_currency\": \"GBP\", \"date\": \"${DATE}\"}" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/fx-refresh-daily-rates"

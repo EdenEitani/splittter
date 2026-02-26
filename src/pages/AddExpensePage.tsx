@@ -1,0 +1,442 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { Layout } from '@/components/Layout'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { CategoryGrid } from '@/components/CategoryCard'
+import { PersonCardGrid } from '@/components/PersonCard'
+import { useGroup, useGroupMembers } from '@/hooks/useGroups'
+import { useCategories } from '@/hooks/useCategories'
+import { useCreateExpense } from '@/hooks/useExpenses'
+import { useCategorize } from '@/hooks/useCategorize'
+import { useAuth } from '@/hooks/useAuth'
+import { COMMON_CURRENCIES } from '@/lib/money'
+import { clsx } from 'clsx'
+import type { ExpenseFormData, SplitMethod } from '@/types'
+import { todayISO } from '@/lib/fx'
+
+const SPLIT_METHODS: { value: SplitMethod; label: string; desc: string }[] = [
+  { value: 'equal', label: 'Equal', desc: 'Divide equally' },
+  { value: 'custom_amounts', label: 'By amount', desc: 'Set each person\'s share' },
+  { value: 'percent', label: 'By %', desc: 'Set percentages' },
+]
+
+export function AddExpensePage() {
+  const { groupId } = useParams<{ groupId: string }>()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+
+  const { data: group } = useGroup(groupId!)
+  const { data: members } = useGroupMembers(groupId!)
+  const { data: categories } = useCategories(group?.type)
+  const createExpense = useCreateExpense(groupId!, group?.base_currency ?? 'USD')
+
+  const profiles = (members ?? []).map(m => m.profile!).filter(Boolean)
+
+  // ─── Form State ─────────────────────────────────────────────────────────────
+  const [form, setForm] = useState<ExpenseFormData>({
+    label: '',
+    original_amount: '',
+    original_currency: group?.base_currency ?? 'USD',
+    category_id: null,
+    category_confidence: null,
+    notes: '',
+    occurred_at: todayISO() + 'T12:00:00',
+    payer_ids: user?.id ? [user.id] : [],
+    participant_ids: [],
+    split_method: 'equal',
+    custom_amounts: {},
+    custom_percents: {},
+  })
+
+  // Initialize participants and currency from group
+  useEffect(() => {
+    if (members && user) {
+      setForm(f => ({
+        ...f,
+        participant_ids: members.map(m => m.user_id),
+        payer_ids: [user.id],
+        original_currency: group?.base_currency ?? f.original_currency,
+      }))
+    }
+  }, [members, user, group])
+
+  const [showCurrencies, setShowCurrencies] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [manualCategory, setManualCategory] = useState(false)
+
+  // ─── LLM Categorization ─────────────────────────────────────────────────────
+  const { result: llmResult, loading: llmLoading } = useCategorize(
+    form.label,
+    group?.type ?? 'custom'
+  )
+
+  // Auto-apply suggestion (if user hasn't manually chosen)
+  useEffect(() => {
+    if (llmResult && !manualCategory) {
+      setForm(f => ({
+        ...f,
+        category_id: llmResult.category_id,
+        category_confidence: llmResult.confidence,
+      }))
+    }
+  }, [llmResult, manualCategory])
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+  function handleCategorySelect(id: string) {
+    setManualCategory(true)
+    setForm(f => ({ ...f, category_id: id, category_confidence: 1.0 }))
+  }
+
+  function togglePayer(userId: string) {
+    setForm(f => ({
+      ...f,
+      payer_ids: f.payer_ids.includes(userId)
+        ? f.payer_ids.filter(id => id !== userId)
+        : [...f.payer_ids, userId],
+    }))
+  }
+
+  function toggleParticipant(userId: string) {
+    setForm(f => ({
+      ...f,
+      participant_ids: f.participant_ids.includes(userId)
+        ? f.participant_ids.filter(id => id !== userId)
+        : [...f.participant_ids, userId],
+    }))
+  }
+
+  function validate(): boolean {
+    const e: Record<string, string> = {}
+    if (!form.label.trim()) e.label = 'Description is required'
+    if (!form.original_amount || isNaN(parseFloat(form.original_amount)))
+      e.amount = 'Enter a valid amount'
+    if (parseFloat(form.original_amount) <= 0)
+      e.amount = 'Amount must be greater than 0'
+    if (form.payer_ids.length === 0) e.payers = 'Select at least one payer'
+    if (form.participant_ids.length === 0) e.participants = 'Select at least one participant'
+
+    if (form.split_method === 'custom_amounts') {
+      const total = form.participant_ids.reduce(
+        (sum, id) => sum + parseFloat(form.custom_amounts[id] || '0'),
+        0
+      )
+      const inputTotal = parseFloat(form.original_amount || '0')
+      if (Math.abs(total - inputTotal) > 0.02)
+        e.custom = `Shares must add up to ${inputTotal.toFixed(2)} (currently ${total.toFixed(2)})`
+    }
+
+    if (form.split_method === 'percent') {
+      const total = form.participant_ids.reduce(
+        (sum, id) => sum + parseFloat(form.custom_percents[id] || '0'),
+        0
+      )
+      if (Math.abs(total - 100) > 0.5)
+        e.custom = `Percentages must add up to 100% (currently ${total.toFixed(1)}%)`
+    }
+
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validate()) return
+
+    try {
+      await createExpense.mutateAsync(form)
+      navigate(`/group/${groupId}`)
+    } catch (err) {
+      setErrors({ submit: (err as Error).message })
+    }
+  }
+
+  const groupCurrencySymbol = group?.base_currency ?? 'USD'
+
+  return (
+    <Layout title="Add Expense" showBack backTo={`/group/${groupId}`}>
+      <form onSubmit={handleSubmit} className="space-y-6 pb-8">
+
+        {/* ① Amount */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+            Amount
+          </label>
+          <div className="flex items-center gap-3">
+            {/* Currency pill */}
+            <button
+              type="button"
+              onClick={() => setShowCurrencies(!showCurrencies)}
+              className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm px-3 h-12 rounded-xl transition-colors flex-shrink-0"
+            >
+              {form.original_currency}
+              {showCurrencies ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {/* Amount input */}
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={form.original_amount}
+              onChange={e => setForm(f => ({ ...f, original_amount: e.target.value }))}
+              className={clsx(
+                'flex-1 text-3xl font-bold text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300',
+                errors.amount && 'text-red-500'
+              )}
+              step="0.01"
+              min="0"
+            />
+          </div>
+          {errors.amount && <p className="text-xs text-red-500 mt-1">{errors.amount}</p>}
+
+          {/* Currency selector */}
+          {showCurrencies && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="grid grid-cols-4 gap-2">
+                {COMMON_CURRENCIES.map(c => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => {
+                      setForm(f => ({ ...f, original_currency: c.code }))
+                      setShowCurrencies(false)
+                    }}
+                    className={clsx(
+                      'flex flex-col items-center py-2 rounded-xl border-2 transition-all',
+                      form.original_currency === c.code
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-100 hover:border-gray-200'
+                    )}
+                  >
+                    <span className="text-base">{c.flag}</span>
+                    <span className="text-[10px] font-semibold text-gray-600">{c.code}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* FX note */}
+          {form.original_currency !== groupCurrencySymbol && (
+            <p className="text-xs text-blue-600 mt-2">
+              Will be converted to {groupCurrencySymbol} at today's rate
+            </p>
+          )}
+        </div>
+
+        {/* ② Label */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+            Description
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="What was this for?"
+              value={form.label}
+              onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+              className={clsx(
+                'w-full text-base text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300',
+                errors.label && 'text-red-500'
+              )}
+            />
+            {llmLoading && (
+              <span className="absolute right-0 top-0 text-xs text-blue-400 flex items-center gap-1">
+                <Sparkles size={12} className="animate-pulse" />
+                Suggesting…
+              </span>
+            )}
+          </div>
+          {errors.label && <p className="text-xs text-red-500 mt-1">{errors.label}</p>}
+        </div>
+
+        {/* ③ Category cards */}
+        {categories && categories.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Category
+              </label>
+              {llmResult && !manualCategory && (
+                <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Sparkles size={10} />
+                  AI suggested · {Math.round(llmResult.confidence * 100)}%
+                </span>
+              )}
+            </div>
+            <CategoryGrid
+              categories={categories}
+              selectedId={form.category_id}
+              suggestedId={!manualCategory ? llmResult?.category_id : null}
+              confidence={llmResult?.confidence}
+              onSelect={handleCategorySelect}
+            />
+          </div>
+        )}
+
+        {/* ④ Payers */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-3">
+            Paid by
+          </label>
+          <PersonCardGrid
+            profiles={profiles}
+            selected={form.payer_ids}
+            onToggle={togglePayer}
+          />
+          {errors.payers && <p className="text-xs text-red-500 mt-2">{errors.payers}</p>}
+        </div>
+
+        {/* ⑤ Participants */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-3">
+            Split between
+          </label>
+          <PersonCardGrid
+            profiles={profiles}
+            selected={form.participant_ids}
+            onToggle={toggleParticipant}
+          />
+          {errors.participants && (
+            <p className="text-xs text-red-500 mt-2">{errors.participants}</p>
+          )}
+
+          {/* ⑥ Split method */}
+          {form.participant_ids.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-50">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Split method
+              </p>
+              <div className="flex gap-2">
+                {SPLIT_METHODS.map(m => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, split_method: m.value }))}
+                    className={clsx(
+                      'flex-1 py-2 text-xs font-medium rounded-xl border-2 transition-all',
+                      form.split_method === m.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom amounts */}
+              {form.split_method === 'custom_amounts' && (
+                <div className="mt-3 space-y-2">
+                  {form.participant_ids.map(uid => {
+                    const p = profiles.find(pr => pr.id === uid)
+                    return (
+                      <div key={uid} className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700 flex-1 truncate">
+                          {p?.display_name.split(' ')[0] ?? uid}
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={form.custom_amounts[uid] ?? ''}
+                          onChange={e => setForm(f => ({
+                            ...f,
+                            custom_amounts: { ...f.custom_amounts, [uid]: e.target.value },
+                          }))}
+                          className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          step="0.01"
+                          min="0"
+                        />
+                      </div>
+                    )
+                  })}
+                  {errors.custom && (
+                    <p className="text-xs text-red-500">{errors.custom}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Custom percents */}
+              {form.split_method === 'percent' && (
+                <div className="mt-3 space-y-2">
+                  {form.participant_ids.map(uid => {
+                    const p = profiles.find(pr => pr.id === uid)
+                    return (
+                      <div key={uid} className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700 flex-1 truncate">
+                          {p?.display_name.split(' ')[0] ?? uid}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={form.custom_percents[uid] ?? ''}
+                            onChange={e => setForm(f => ({
+                              ...f,
+                              custom_percents: { ...f.custom_percents, [uid]: e.target.value },
+                            }))}
+                            className="w-16 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            step="1"
+                            min="0"
+                            max="100"
+                          />
+                          <span className="text-sm text-gray-400">%</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {errors.custom && (
+                    <p className="text-xs text-red-500">{errors.custom}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ⑦ Date */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <Input
+            label="Date"
+            type="date"
+            value={form.occurred_at.slice(0, 10)}
+            onChange={e =>
+              setForm(f => ({ ...f, occurred_at: e.target.value + 'T12:00:00' }))
+            }
+          />
+        </div>
+
+        {/* ⑧ Notes */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+            Notes (optional)
+          </label>
+          <textarea
+            placeholder="Any additional details…"
+            value={form.notes}
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            className="w-full text-sm text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300 resize-none"
+            rows={2}
+          />
+        </div>
+
+        {/* Submit */}
+        {errors.submit && (
+          <p className="text-sm text-red-500 bg-red-50 p-3 rounded-xl">{errors.submit}</p>
+        )}
+
+        <Button
+          type="submit"
+          fullWidth
+          size="lg"
+          loading={createExpense.isPending}
+        >
+          Save expense
+        </Button>
+      </form>
+    </Layout>
+  )
+}
