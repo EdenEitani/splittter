@@ -221,6 +221,30 @@ function fuzzyMatchCategory(
   return fallback?.id ?? null
 }
 
+// ── Fuzzy member name resolver ─────────────────────────────────────────────────
+// The 'by' column in Purrse CSVs may use short names/first names (e.g. 'Reut')
+// while member column headers use full names or emails ('Reut118tobol@gmail.com').
+// This function resolves the short name to the correct memberIdMap key.
+function resolveId(name: string, memberIdMap: Record<string, string>): string | null {
+  if (!name) return null
+  // 1. Exact match
+  if (memberIdMap[name] !== undefined) return memberIdMap[name]
+  const lower = name.toLowerCase()
+  // 2. Case-insensitive exact
+  for (const [key, id] of Object.entries(memberIdMap))
+    if (key.toLowerCase() === lower) return id
+  // 3. Name is prefix of member key  e.g. 'Reut' → 'Reut118tobol@gmail.com'
+  for (const [key, id] of Object.entries(memberIdMap))
+    if (key.toLowerCase().startsWith(lower)) return id
+  // 4. Member key is prefix of name
+  for (const [key, id] of Object.entries(memberIdMap))
+    if (lower.startsWith(key.toLowerCase())) return id
+  // 5. Either contains the other
+  for (const [key, id] of Object.entries(memberIdMap))
+    if (key.toLowerCase().includes(lower) || lower.includes(key.toLowerCase())) return id
+  return null
+}
+
 // ── Modal component ────────────────────────────────────────────────────────────
 
 interface ImportGroupModalProps {
@@ -339,7 +363,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
       for (const exp of parsed.expenses) {
         setProgress(`Importing expense ${++expCount} of ${parsed.expenses.length}…`)
 
-        const payerId = memberIdMap[exp.payerName]
+        const payerId = resolveId(exp.payerName, memberIdMap)
         if (!payerId) continue
 
         // FX conversion
@@ -397,7 +421,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
 
         for (let i = 0; i < memberEntries.length; i++) {
           const [memberName, memberAmt] = memberEntries[i]
-          const memberId = memberIdMap[memberName]
+          const memberId = resolveId(memberName, memberIdMap)
           if (!memberId) continue
 
           // Convert member amount proportionally
@@ -422,8 +446,8 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
       for (const pay of parsed.payments) {
         setProgress(`Importing payment ${++payCount} of ${parsed.payments.length}…`)
 
-        const fromId = memberIdMap[pay.fromName]
-        const toId = memberIdMap[pay.toName]
+        const fromId = resolveId(pay.fromName, memberIdMap)
+        const toId = resolveId(pay.toName, memberIdMap)
         if (!fromId || !toId) continue
 
         const fxRate = await getFxRate(pay.currency, parsed.currency, fxDate)
