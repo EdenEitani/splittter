@@ -62,6 +62,16 @@ export function useAuth() {
     }
   }
 
+  async function signInWithGoogle() {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL ?? '/'}`,
+      },
+    })
+    return { error }
+  }
+
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error }
@@ -88,5 +98,5 @@ export function useAuth() {
     return { error }
   }
 
-  return { session, user, profile, loading, signIn, signUp, signOut, updateProfile }
+  return { session, user, profile, loading, signInWithGoogle, signIn, signUp, signOut, updateProfile }
 }

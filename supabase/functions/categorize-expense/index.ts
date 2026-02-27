@@ -97,6 +97,31 @@ const TYPE_KEYWORDS: Record<string, KeywordMap> = {
   custom: {},
 }
 
+// ─── Hebrew universal keywords (always checked regardless of group type) ───────
+// Covers common Israeli expense labels for custom/untyped groups.
+
+const HEBREW_UNIVERSAL_KEYWORDS: KeywordMap = {
+  'Rent':          ['שכירות', 'שכד', 'שכ"ד', 'שכ״ד', 'שכ׳ד', 'דמי שכירות', 'משכירה', 'מחייר'],
+  'Electricity':   ['חשמל', 'חברת חשמל', 'חשבון חשמל'],
+  'Water':         ['מים', 'ביוב', 'צנרת', 'מי עכו', 'מי אביב'],
+  'Gas':           ['גז', 'חימום', 'גז ישיר'],
+  'Internet':      ['אינטרנט', 'ווייפי', 'בזק', 'הוט נט', 'סלקום נט', 'פרטנר נט'],
+  'Groceries':     ['קניות', 'סופרמרקט', 'מכולת', 'רמי לוי', 'שופרסל', 'ביג', 'מגה', 'יינות ביתן', 'אושר עד'],
+  'Utilities':     ['ארנונה', 'חשבון', 'ועד בית', 'ועד'],
+  'Cleaning':      ['ניקיון', 'כביסה', 'שואב אבק', 'מנקה'],
+  'Repairs':       ['תיקון', 'אחזקה', 'שיפוץ', 'נגר', 'חשמלאי', 'אינסטלטור', 'נזילה'],
+  'Subscriptions': ['נטפליקס', 'ספוטיפיי', 'מנוי', 'הוט', 'יס', 'סלקום', 'פרטנר', 'חן נט'],
+  'Flights':       ['טיסה', 'טיסות', 'נמל תעופה', 'אל על', 'ויזאייר', 'ראיינאיר'],
+  'Hotel':         ['מלון', 'אכסניה', 'ריזורט', 'פנסיון'],
+  'Activities':    ['כרטיס', 'מוזיאון', 'הופעה', 'קונצרט', 'גן חיות', 'אטרקציה'],
+  'Car Rental':    ['השכרת רכב', 'השכרה', 'אלדן', 'הרץ', 'בודג׳ט'],
+  'Shopping':      ['קניות', 'קניון', 'אמזון', 'זארה', 'H&M', 'קסטרו', 'רנואר', 'פוקס'],
+  'Food':          ['מסעדה', 'אוכל', 'ארוחה', 'פיצה', 'פלאפל', 'שוורמה', 'המבורגר', 'סלט', 'קינוח', 'בית קפה'],
+  'Gifts':         ['מתנה', 'מתנות', 'אריזה', 'גיפט קארד'],
+  'Health':        ['בי קיור', 'קיור', 'מרפאה', 'רופא', 'תרופה', 'ביטוח', 'קופת חולים', 'לייזר', 'פיזיו'],
+  'Transport':     ['אוטובוס', 'רכבת', 'מטרו', 'תחבורה', 'טרמפ', 'גט', 'מונית', 'מוניות', 'אוברעל'],
+}
+
 function heuristicClassify(
   label: string,
   groupType: string,
@@ -106,10 +131,14 @@ function heuristicClassify(
   const lower = label.toLowerCase()
   const typeMap = TYPE_KEYWORDS[groupType] ?? {}
 
-  // Combine type-specific + global keywords
+  // Detect if label contains Hebrew characters
+  const hasHebrew = /[\u0590-\u05FF\uFB1D-\uFB4F]/.test(label)
+
+  // Combine type-specific + global + (always) Hebrew universal keywords
   const allKeywords: Record<string, string[]> = {
     ...typeMap,
     ...GLOBAL_KEYWORDS,
+    ...(hasHebrew ? HEBREW_UNIVERSAL_KEYWORDS : {}),
   }
 
   let bestName = ''
@@ -117,7 +146,9 @@ function heuristicClassify(
 
   for (const [catName, keywords] of Object.entries(allKeywords)) {
     for (const kw of keywords) {
-      if (lower.includes(kw)) {
+      // For Hebrew keywords match against original label (lowercased covers Latin too)
+      const haystack = /[\u0590-\u05FF\uFB1D-\uFB4F]/.test(kw) ? label : lower
+      if (haystack.includes(kw)) {
         const score = kw.length // prefer longer/more specific matches
         if (score > bestScore) {
           bestScore = score
@@ -129,9 +160,15 @@ function heuristicClassify(
 
   if (!bestName) return null
 
-  const cat = categories.find(c =>
-    c.name.toLowerCase() === bestName.toLowerCase()
-  )
+  // Try exact name match first, then partial match
+  let cat = categories.find(c => c.name.toLowerCase() === bestName.toLowerCase())
+  if (!cat) {
+    // Try contains match (e.g. 'Car Rental' might match category 'Rental')
+    cat = categories.find(c =>
+      bestName.toLowerCase().includes(c.name.toLowerCase()) ||
+      c.name.toLowerCase().includes(bestName.toLowerCase())
+    )
+  }
   if (!cat) return null
 
   return {

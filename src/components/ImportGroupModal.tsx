@@ -108,6 +108,97 @@ function parseCSV(content: string): ParsedCSV {
   return { groupName, currency, members, expenses }
 }
 
+// ── Fuzzy category matching ────────────────────────────────────────────────────
+
+const CATEGORY_ALIASES: Record<string, string> = {
+  'other': 'general',
+  'misc': 'general',
+  'miscellaneous': 'general',
+  'transportation': 'transport',
+  'travel': 'transport',
+  'flights': 'flights',
+  'flight': 'flights',
+  'food': 'food',
+  'meal': 'food',
+  'restaurant': 'food',
+  'beverages': 'drinks',
+  'alcohol': 'drinks',
+  'accommodation': 'lodging',
+  'hotel': 'hotel',
+  'lodging': 'lodging',
+  'housing': 'rent',
+  'lease': 'rent',
+  'rent': 'rent',
+  'utilities': 'utilities',
+  'electric': 'electricity',
+  'internet': 'internet',
+  'wifi': 'internet',
+  'grocery': 'groceries',
+  'supermarket': 'groceries',
+  'shopping': 'shopping',
+  'entertainment': 'activities',
+  'activity': 'activities',
+  'gift': 'gifts',
+  'health': 'general',
+  'medical': 'general',
+}
+
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function fuzzyMatchCategory(
+  csvCategory: string,
+  categories: { id: string; name: string }[]
+): string | null {
+  if (!categories.length) return null
+  const csvNorm = norm(csvCategory)
+
+  // 1. Exact normalised match
+  let match = categories.find(c => norm(c.name) === csvNorm)
+  if (match) return match.id
+
+  // 2. Known alias
+  const alias = CATEGORY_ALIASES[csvNorm]
+  if (alias) {
+    match = categories.find(c => norm(c.name) === alias)
+    if (match) return match.id
+  }
+
+  // 3. Contains match (prefer longest category name that fits)
+  const containsMatches = categories
+    .filter(c => {
+      const cn = norm(c.name)
+      return csvNorm.includes(cn) || cn.includes(csvNorm)
+    })
+    .sort((a, b) => b.name.length - a.name.length)
+  if (containsMatches.length) return containsMatches[0].id
+
+  // 4. Starts-with match
+  match = categories.find(c => {
+    const cn = norm(c.name)
+    return csvNorm.startsWith(cn) || cn.startsWith(csvNorm)
+  })
+  if (match) return match.id
+
+  // 5. Token overlap
+  const csvTokens = csvNorm.split(/(?=[A-Z])|_|-/).filter(Boolean)
+  let best: { id: string; score: number } | null = null
+  for (const cat of categories) {
+    const catTokens = norm(cat.name).split(/(?=[A-Z])|_|-/).filter(Boolean)
+    const overlap = csvTokens.filter(t => catTokens.some(ct => ct.startsWith(t) || t.startsWith(ct))).length
+    const score = overlap / Math.max(csvTokens.length, catTokens.length)
+    if (score > 0.4 && (!best || score > best.score)) {
+      best = { id: cat.id, score }
+    }
+  }
+  if (best) return best.id
+
+  // 6. Fallback to 'General' or 'Other'
+  const fallback = categories.find(c => norm(c.name) === 'general' || norm(c.name) === 'other')
+  return fallback?.id ?? null
+}
+
 // ── Modal component ────────────────────────────────────────────────────────────
 
 interface ImportGroupModalProps {
@@ -212,16 +303,12 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
         }
       }
 
-      // 3. Fetch categories for mapping
+      // 3. Fetch categories for mapping (fetch all types for best coverage)
       const { data: categories } = await supabase
         .from('categories')
         .select('id, name')
-        .in('group_type', ['custom', 'all'])
 
-      const catMap: Record<string, string> = {}
-      for (const cat of categories ?? []) {
-        catMap[cat.name.toUpperCase()] = cat.id
-      }
+      const catList = (categories ?? []) as { id: string; name: string }[]
 
       // 4. Create expenses
       const fxDate = todayISO()
@@ -238,8 +325,8 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
         const originalMinor = toMinorUnits(exp.amount, exp.currency)
         const groupMinor = convertAmount(originalMinor, fxRate)
 
-        // Category lookup (try exact name then fallback)
-        const categoryId = catMap[exp.category] ?? catMap['OTHER'] ?? null
+        // Category lookup via fuzzy match
+        const categoryId = fuzzyMatchCategory(exp.category, catList)
 
         // Create expense
         const { data: expense, error: expErr } = await supabase

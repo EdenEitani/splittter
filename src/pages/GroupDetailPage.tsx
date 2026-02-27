@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Receipt, CreditCard, Users } from 'lucide-react'
+import { Receipt, CreditCard, Users, Settings } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
 import { PaymentItem } from '@/components/PaymentItem'
@@ -48,7 +48,6 @@ export function GroupDetailPage() {
     )
   }
 
-  // Build balances
   const memberProfiles = (members ?? []).map(m => ({
     user_id: m.user_id,
     profile: m.profile!,
@@ -61,15 +60,10 @@ export function GroupDetailPage() {
     group.base_currency
   )
 
-  // Build activity feed (interleaved, sorted by date desc)
   const activity: ActivityItem[] = [
     ...(expenses ?? []).map(e => ({ kind: 'expense' as const, data: e })),
     ...(payments ?? []).map(p => ({ kind: 'payment' as const, data: p })),
-  ].sort((a, b) => {
-    const dA = a.kind === 'expense' ? a.data.occurred_at : a.data.occurred_at
-    const dB = b.kind === 'expense' ? b.data.occurred_at : b.data.occurred_at
-    return dB.localeCompare(dA)
-  })
+  ].sort((a, b) => b.data.occurred_at.localeCompare(a.data.occurred_at))
 
   const loading = loadingExpenses || loadingPayments || loadingMembers
 
@@ -79,9 +73,18 @@ export function GroupDetailPage() {
       showBack
       backTo="/"
       noPad
+      headerRight={
+        <Link
+          to={`/group/${groupId}/settings`}
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+          title="Group settings"
+        >
+          <Settings size={18} />
+        </Link>
+      }
     >
       {/* Tab bar */}
-      <div className="flex bg-white border-b border-gray-100 sticky top-14 z-30">
+      <div className="flex bg-white border-b border-gray-100 sticky top-14 md:top-16 z-30">
         {(['activity', 'balances', 'members'] as Tab[]).map(t => (
           <button
             key={t}
@@ -98,7 +101,7 @@ export function GroupDetailPage() {
         ))}
       </div>
 
-      <div className="p-4 pb-24">
+      <div className="p-4 md:p-6 pb-28">
         {/* Activity tab */}
         {tab === 'activity' && (
           <div className="space-y-2.5">
@@ -141,8 +144,8 @@ export function GroupDetailPage() {
             balances={balances}
             currency={group.base_currency}
             currentUserId={user?.id}
+            expenses={expenses ?? []}
             onSettle={(from, to) => {
-              // Navigate to add payment with pre-filled values
               window.location.href = `/group/${groupId}/add-payment?from=${from}&to=${to}`
             }}
           />
@@ -178,14 +181,14 @@ export function GroupDetailPage() {
               className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium px-1"
             >
               <Users size={16} />
-              Manage members
+              Manage members & settings
             </Link>
           </div>
         )}
       </div>
 
       {/* FABs */}
-      <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-50">
+      <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 flex flex-col gap-3 z-50">
         <Link
           to={`/group/${groupId}/add-payment`}
           className="flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-md px-4 h-11 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors"
@@ -195,7 +198,7 @@ export function GroupDetailPage() {
         </Link>
         <Link
           to={`/group/${groupId}/add-expense`}
-          className="flex items-center gap-2 bg-blue-600 text-white shadow-lg px-5 h-13 rounded-full font-semibold text-base hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 bg-blue-600 text-white shadow-lg px-5 h-12 rounded-full font-semibold text-base hover:bg-blue-700 transition-colors"
         >
           <Receipt size={20} />
           Add expense

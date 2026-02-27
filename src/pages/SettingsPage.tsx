@@ -4,7 +4,26 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
 import { refreshDailyRates } from '@/lib/fx'
-import { LogOut, RefreshCw } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useQuery } from '@tanstack/react-query'
+import { LogOut, RefreshCw, Clock } from 'lucide-react'
+import { format } from 'date-fns'
+
+function useLastFxSync() {
+  return useQuery({
+    queryKey: ['last_fx_sync'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('fx_rates')
+        .select('date, created_at, base_currency')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      return data
+    },
+    staleTime: 1000 * 60,
+  })
+}
 
 export function SettingsPage() {
   const { profile, signOut, updateProfile } = useAuth()
@@ -13,6 +32,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
+  const { data: lastSync, refetch: refetchSync } = useLastFxSync()
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault()
@@ -30,6 +50,7 @@ export function SettingsPage() {
     try {
       await refreshDailyRates('USD')
       setRefreshMsg('FX rates refreshed successfully!')
+      refetchSync()
     } catch (err) {
       setRefreshMsg(`Failed: ${(err as Error).message}`)
     }
@@ -67,6 +88,20 @@ export function SettingsPage() {
           <p className="text-xs text-gray-400 mb-3">
             Manually refresh today's FX rates if auto-refresh hasn't run yet.
           </p>
+
+          {lastSync && (
+            <div className="flex items-center gap-2 mb-3 text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
+              <Clock size={12} className="text-gray-400 flex-shrink-0" />
+              <span>
+                Last synced:{' '}
+                <span className="font-medium text-gray-700">
+                  {format(new Date(lastSync.created_at), 'MMM d, yyyy · HH:mm')}
+                </span>
+                {' '}({lastSync.base_currency} base, {lastSync.date})
+              </span>
+            </div>
+          )}
+
           <Button
             variant="secondary"
             onClick={handleRefreshRates}
@@ -88,10 +123,7 @@ export function SettingsPage() {
           <p className="text-sm text-gray-500 mb-3">
             Signed in as <span className="font-medium">{profile?.display_name}</span>
           </p>
-          <Button
-            variant="danger"
-            onClick={signOut}
-          >
+          <Button variant="danger" onClick={signOut}>
             <LogOut size={15} className="mr-1.5" />
             Sign out
           </Button>
