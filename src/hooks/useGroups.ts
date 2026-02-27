@@ -30,7 +30,35 @@ export function useGroups() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data as unknown as GroupWithMembers[]
+      if (!data?.length) return [] as GroupWithMembers[]
+
+      // Fetch the earliest expense date per group (for imported groups whose
+      // created_at is "now" but expenses are from the past)
+      const { data: expDates } = await supabase
+        .from('expenses')
+        .select('group_id, occurred_at')
+        .in('group_id', data.map(g => g.id))
+        .order('occurred_at', { ascending: true })
+
+      // Build min-date map: first row per group (already sorted asc)
+      const minExpDate: Record<string, string> = {}
+      for (const e of expDates ?? []) {
+        if (!minExpDate[e.group_id]) minExpDate[e.group_id] = e.occurred_at
+      }
+
+      // Sort: use min expense date if earlier than created_at (imported groups),
+      // otherwise use created_at. Descending (most recent first).
+      const sorted = [...data].sort((a, b) => {
+        const dA = minExpDate[a.id] && minExpDate[a.id] < a.created_at
+          ? minExpDate[a.id]
+          : a.created_at
+        const dB = minExpDate[b.id] && minExpDate[b.id] < b.created_at
+          ? minExpDate[b.id]
+          : b.created_at
+        return dB.localeCompare(dA)
+      })
+
+      return sorted as unknown as GroupWithMembers[]
     },
     staleTime: 1000 * 30,
   })
