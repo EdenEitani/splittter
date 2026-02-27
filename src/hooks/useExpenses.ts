@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { toMinorUnits, convertAmount } from '@/lib/money'
 import { computeParticipantShares } from '@/lib/balance'
-import { getFxRate, todayISO } from '@/lib/fx'
+import { ensureDailyRates, getFxRate, todayISO } from '@/lib/fx'
 import type { Expense, ExpenseFormData } from '@/types'
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
@@ -52,7 +52,10 @@ export function useCreateExpense(groupId: string, groupCurrency: string) {
       const fxDate = todayISO()
       const originalMinor = toMinorUnits(form.original_amount, form.original_currency)
 
-      // Fetch FX rate
+      // Ensure today's rates exist (fetches at most once per day)
+      if (form.original_currency !== groupCurrency) {
+        await ensureDailyRates(form.original_currency)
+      }
       const fxRate = await getFxRate(form.original_currency, groupCurrency, fxDate)
       const groupMinor = convertAmount(originalMinor, fxRate)
 
