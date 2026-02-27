@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import appIcon from '@/assets/splittter.png'
 
 export function AuthPage() {
   const { signInWithGoogle, signIn, signUp } = useAuth()
@@ -41,7 +42,7 @@ export function AuthPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3">⚡</div>
+          <img src={appIcon} alt="Splittter" className="w-20 h-20 mx-auto mb-3 rounded-2xl shadow-lg" />
           <h1 className="text-3xl font-bold text-white tracking-tight">Splittter</h1>
           <p className="text-blue-200 mt-1.5 text-sm">Split expenses at the speed of thought</p>
         </div>

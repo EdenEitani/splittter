@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Home, Settings, ArrowLeft, Bell } from 'lucide-react'
 import { clsx } from 'clsx'
+import appIcon from '@/assets/splittter.png'
 
 interface LayoutProps {
   children: ReactNode
@@ -27,8 +28,9 @@ export function Layout({
       {/* ── Desktop Sidebar ─────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-60 bg-white border-r border-gray-100 sticky top-0 h-screen flex-shrink-0">
         {/* Logo */}
-        <div className="p-5 border-b border-gray-100">
-          <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-violet-500 bg-clip-text text-transparent">
+        <div className="p-4 border-b border-gray-100 flex items-center gap-2.5">
+          <img src={appIcon} alt="" className="w-8 h-8 rounded-lg" />
+          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-violet-500 bg-clip-text text-transparent">
             Splittter
           </span>
         </div>
