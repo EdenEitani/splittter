@@ -41,11 +41,21 @@ interface ParsedExpense {
   memberAmounts: Record<string, number>
 }
 
+interface ParsedPayment {
+  date: string
+  amount: number
+  currency: string
+  fromName: string   // who paid (by column)
+  toName: string     // who received (member with positive value)
+  notes: string
+}
+
 interface ParsedCSV {
   groupName: string
   currency: string
   members: string[]
   expenses: ParsedExpense[]
+  payments: ParsedPayment[]
 }
 
 function parseCSV(content: string): ParsedCSV {
@@ -55,6 +65,7 @@ function parseCSV(content: string): ParsedCSV {
   let headerParsed = false
   let members: string[] = []
   const expenses: ParsedExpense[] = []
+  const payments: ParsedPayment[] = []
 
   for (const line of lines) {
     if (!line.trim()) continue
@@ -71,7 +82,6 @@ function parseCSV(content: string): ParsedCSV {
     }
 
     if (!headerParsed) {
-      // This is the column header row
       const cols = parseCSVLine(line)
       // Columns: date,type,description,category,amount,currency,exchangeRate,by,[member1],[member2],...
       members = cols.slice(8).filter(m => m.trim())
@@ -83,29 +93,41 @@ function parseCSV(content: string): ParsedCSV {
     if (parts.length < 4) continue
 
     const rowType = parts[1]?.toUpperCase()
-    if (rowType !== 'EXPENSE') continue
-
     const date = parts[0] || todayISO()
-    const description = parts[2] || ''
-    const category = parts[3] || 'OTHER'
-    const amount = parseFloat(parts[4]) || 0
-    const expCurrency = parts[5] || currency
-    const payerName = parts[7] || ''
+    const rowCurrency = parts[5] || currency
+    const byName = parts[7] || ''
 
-    const memberAmounts: Record<string, number> = {}
-    for (let i = 0; i < members.length; i++) {
-      const val = parseFloat(parts[8 + i])
-      if (!isNaN(val) && val !== 0) {
-        memberAmounts[members[i]] = val
+    if (rowType === 'EXPENSE') {
+      const description = parts[2] || ''
+      const category = parts[3] || 'OTHER'
+      const amount = parseFloat(parts[4]) || 0
+      const memberAmounts: Record<string, number> = {}
+      for (let i = 0; i < members.length; i++) {
+        const val = parseFloat(parts[8 + i])
+        if (!isNaN(val) && val !== 0) memberAmounts[members[i]] = val
       }
-    }
-
-    if (amount > 0 && description && payerName) {
-      expenses.push({ date, description, category, amount, currency: expCurrency, payerName, memberAmounts })
+      if (amount > 0 && description && byName) {
+        expenses.push({ date, description, category, amount, currency: rowCurrency, payerName: byName, memberAmounts })
+      }
+    } else if (rowType === 'PAYMENT') {
+      const amount = parseFloat(parts[4]) || 0
+      const description = parts[2] || ''
+      // The recipient is the member with a non-zero value in their column
+      let toName = ''
+      for (let i = 0; i < members.length; i++) {
+        const val = parseFloat(parts[8 + i])
+        if (!isNaN(val) && val !== 0) {
+          toName = members[i]
+          break
+        }
+      }
+      if (amount > 0 && byName && toName) {
+        payments.push({ date, amount, currency: rowCurrency, fromName: byName, toName, notes: description })
+      }
     }
   }
 
-  return { groupName, currency, members, expenses }
+  return { groupName, currency, members, expenses, payments }
 }
 
 // ── Fuzzy category matching ────────────────────────────────────────────────────
@@ -395,6 +417,35 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
         await supabase.from('expense_participants').insert(participantRows)
       }
 
+      // 5. Create payments (settle-up records)
+      let payCount = 0
+      for (const pay of parsed.payments) {
+        setProgress(`Importing payment ${++payCount} of ${parsed.payments.length}…`)
+
+        const fromId = memberIdMap[pay.fromName]
+        const toId = memberIdMap[pay.toName]
+        if (!fromId || !toId) continue
+
+        const fxRate = await getFxRate(pay.currency, parsed.currency, fxDate)
+        const originalMinor = toMinorUnits(pay.amount, pay.currency)
+        const groupMinor = convertAmount(originalMinor, fxRate)
+
+        await supabase.from('payments').insert({
+          group_id: group.id,
+          created_by: user.id,
+          from_user_id: fromId,
+          to_user_id: toId,
+          original_amount: originalMinor,
+          original_currency: pay.currency,
+          group_amount: groupMinor,
+          group_currency: parsed.currency,
+          fx_rate: fxRate,
+          fx_date: fxDate,
+          occurred_at: pay.date,
+          notes: pay.notes || null,
+        })
+      }
+
       setImportedGroupId(group.id)
       qc.invalidateQueries({ queryKey: groupKeys.all })
       setStep('done')
@@ -469,6 +520,10 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
                   <span className="text-gray-500">Expenses to import</span>
                   <span className="font-semibold text-gray-900">{parsed.expenses.length}</span>
                 </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Payments to import</span>
+                  <span className="font-semibold text-gray-900">{parsed.payments.length}</span>
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -510,7 +565,9 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
               </div>
               <div className="text-center">
                 <p className="font-semibold text-gray-900">Import complete!</p>
-                <p className="text-sm text-gray-500 mt-1">{parsed?.expenses.length} expenses imported successfully.</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {parsed?.expenses.length} expenses and {parsed?.payments.length} payments imported successfully.
+                </p>
               </div>
             </div>
           )}
@@ -539,7 +596,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
               <Button variant="secondary" onClick={() => setStep('upload')}>Back</Button>
               <Button onClick={handleImport}>
                 <Upload size={15} className="mr-1.5" />
-                Import {parsed?.expenses.length} expenses
+                Import {(parsed?.expenses.length ?? 0) + (parsed?.payments.length ?? 0)} items
               </Button>
             </>
           )}
