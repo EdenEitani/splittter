@@ -80,11 +80,17 @@ export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
       to={`/group/${group.id}`}
       className="block bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 p-5"
     >
-      {/* Icon + name + status badge */}
+      {/* Icon/emoji + name + status badge */}
       <div className="flex items-center gap-3 mb-4">
-        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0', iconColor)}>
-          <Icon size={22} />
-        </div>
+        {group.emoji ? (
+          <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0 text-2xl">
+            {group.emoji}
+          </div>
+        ) : (
+          <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0', iconColor)}>
+            <Icon size={22} />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-gray-900 text-lg leading-tight truncate">{group.name}</h3>
           <p className="text-xs text-gray-400 mt-0.5">

@@ -21,6 +21,7 @@ export interface Group {
   name: string
   type: GroupType
   base_currency: string
+  emoji?: string | null
   created_by: string
   created_at: string
 }

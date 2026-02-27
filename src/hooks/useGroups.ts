@@ -193,16 +193,19 @@ export function useUpdateGroup() {
       name,
       base_currency,
       type,
+      emoji,
     }: {
       groupId: string
       name?: string
       base_currency?: string
       type?: GroupType
+      emoji?: string | null
     }) => {
-      const update: Record<string, string> = {}
+      const update: Record<string, string | null> = {}
       if (name !== undefined) update.name = name
       if (base_currency !== undefined) update.base_currency = base_currency
       if (type !== undefined) update.type = type
+      if (emoji !== undefined) update.emoji = emoji
 
       const { error } = await supabase
         .from('groups')
@@ -287,14 +290,27 @@ export function useUserGroupsBalance(userId: string | undefined) {
   })
 }
 
-export function useUpdateMemberEmail() {
+export function useUpdateMemberProfile() {
   const qc = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ userId, email }: { userId: string; email: string; groupId: string }) => {
+    mutationFn: async ({
+      userId,
+      display_name,
+      email,
+    }: {
+      userId: string
+      groupId: string
+      display_name?: string
+      email?: string
+    }) => {
+      const update: Record<string, string | null> = {}
+      if (display_name !== undefined) update.display_name = display_name.trim()
+      if (email !== undefined) update.email = email.trim().toLowerCase() || null
+
       const { error } = await supabase
         .from('profiles')
-        .update({ email: email.trim().toLowerCase() || null })
+        .update(update)
         .eq('id', userId)
       if (error) throw error
     },

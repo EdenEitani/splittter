@@ -4,7 +4,7 @@ import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, 
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup, useUpdateMemberEmail } from '@/hooks/useGroups'
+import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup, useUpdateMemberProfile } from '@/hooks/useGroups'
 import { useAuth } from '@/hooks/useAuth'
 import { COMMON_CURRENCIES } from '@/lib/money'
 import { clsx } from 'clsx'
@@ -18,6 +18,8 @@ const GROUP_TYPES: { type: GroupType; label: string; icon: React.ReactNode; desc
   { type: 'custom',    label: 'Custom',    icon: <Sparkles size={18} />,  desc: 'Anything else' },
 ]
 
+const SUGGESTED_EMOJIS = ['🏠','✈️','🎉','🍕','🏋️','🌴','🎸','🎮','🛒','🎓','💼','🏊','🚗','🐶','🎯','🌍']
+
 export function GroupSettingsPage() {
   const { groupId } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
@@ -27,7 +29,7 @@ export function GroupSettingsPage() {
   const addMember = useAddMember()
   const updateGroup = useUpdateGroup()
   const deleteGroup = useDeleteGroup()
-  const updateMemberEmail = useUpdateMemberEmail()
+  const updateMemberProfile = useUpdateMemberProfile()
 
   // Add member form
   const [name, setName] = useState('')
@@ -35,15 +37,21 @@ export function GroupSettingsPage() {
   const [msg, setMsg] = useState('')
   const [memberError, setMemberError] = useState('')
 
-  // Email editing per member
-  const [editingEmailId, setEditingEmailId] = useState<string | null>(null)
-  const [emailInput, setEmailInput] = useState('')
-  const [emailMsg, setEmailMsg] = useState('')
+  // Member inline editing
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [memberNameInput, setMemberNameInput] = useState('')
+  const [memberEmailInput, setMemberEmailInput] = useState('')
+  const [memberEditMsg, setMemberEditMsg] = useState('')
 
-  // Name edit
+  // Group name edit
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [nameMsg, setNameMsg] = useState('')
+
+  // Emoji edit
+  const [editingEmoji, setEditingEmoji] = useState(false)
+  const [emojiInput, setEmojiInput] = useState('')
+  const [emojiMsg, setEmojiMsg] = useState('')
 
   // Currency edit
   const [editingCurrency, setEditingCurrency] = useState(false)
@@ -73,14 +81,26 @@ export function GroupSettingsPage() {
     }
   }
 
-  async function handleSaveMemberEmail(userId: string) {
+  async function handleSaveMember(userId: string) {
+    setMemberEditMsg('')
     try {
-      await updateMemberEmail.mutateAsync({ userId, email: emailInput, groupId: groupId! })
-      setEmailMsg('Email saved!')
-      setEditingEmailId(null)
+      await updateMemberProfile.mutateAsync({
+        userId,
+        groupId: groupId!,
+        display_name: memberNameInput.trim() || undefined,
+        email: memberEmailInput,
+      })
+      setEditingMemberId(null)
     } catch (err) {
-      setEmailMsg((err as Error).message)
+      setMemberEditMsg((err as Error).message)
     }
+  }
+
+  function startEditMember(userId: string, currentName: string, currentEmail: string) {
+    setEditingMemberId(userId)
+    setMemberNameInput(currentName)
+    setMemberEmailInput(currentEmail)
+    setMemberEditMsg('')
   }
 
   async function handleSaveName() {
@@ -101,6 +121,22 @@ export function GroupSettingsPage() {
     setNameInput(group?.name ?? '')
     setEditingName(true)
     setNameMsg('')
+  }
+
+  async function handleSaveEmoji() {
+    try {
+      await updateGroup.mutateAsync({ groupId: groupId!, emoji: emojiInput.trim() || null })
+      setEmojiMsg('Icon updated.')
+      setEditingEmoji(false)
+    } catch (err) {
+      setEmojiMsg((err as Error).message)
+    }
+  }
+
+  function startEditEmoji() {
+    setEmojiInput(group?.emoji ?? '')
+    setEditingEmoji(true)
+    setEmojiMsg('')
   }
 
   async function handleSaveCurrency() {
@@ -167,6 +203,7 @@ export function GroupSettingsPage() {
               <h2 className="text-sm font-semibold text-gray-700">Group Info</h2>
             </div>
             <div className="p-4 space-y-3">
+
               {/* Name row */}
               {!editingName ? (
                 <div className="flex items-center justify-between">
@@ -192,6 +229,70 @@ export function GroupSettingsPage() {
                       <Check size={14} className="mr-1" /> Save
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => setEditingName(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-50" />
+
+              {/* Emoji row */}
+              {!editingEmoji ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400">Icon (emoji)</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">
+                      {group.emoji ? (
+                        <span className="text-xl">{group.emoji}</span>
+                      ) : (
+                        <span className="text-gray-400">None (uses type icon)</span>
+                      )}
+                    </p>
+                  </div>
+                  <button onClick={startEditEmoji} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">
+                    <Pencil size={12} /> {group.emoji ? 'Edit' : 'Add'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Choose an emoji</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SUGGESTED_EMOJIS.map(e => (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => setEmojiInput(e)}
+                        className={clsx(
+                          'w-10 h-10 text-xl rounded-xl border-2 transition-all flex items-center justify-center',
+                          emojiInput === e
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                        )}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="Or type any emoji…"
+                    value={emojiInput}
+                    onChange={e => setEmojiInput(e.target.value)}
+                  />
+                  {emojiMsg && <p className="text-xs text-green-600">{emojiMsg}</p>}
+                  <div className="flex gap-2">
+                    <Button size="sm" loading={updateGroup.isPending} onClick={handleSaveEmoji}>
+                      <Check size={14} className="mr-1" /> Save
+                    </Button>
+                    {group.emoji && (
+                      <Button size="sm" variant="secondary" onClick={async () => {
+                        await updateGroup.mutateAsync({ groupId: groupId!, emoji: null })
+                        setEditingEmoji(false)
+                      }}>
+                        Remove
+                      </Button>
+                    )}
+                    <Button size="sm" variant="secondary" onClick={() => setEditingEmoji(false)}>
                       Cancel
                     </Button>
                   </div>
@@ -307,63 +408,63 @@ export function GroupSettingsPage() {
           </div>
           <div className="divide-y divide-gray-50">
             {(members ?? []).map(m => (
-              <div key={m.user_id} className="px-4 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                  {m.profile?.display_name?.[0]?.toUpperCase() ?? '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    {m.profile?.display_name}
-                    {m.user_id === user?.id && (
-                      <span className="text-gray-400 font-normal"> (you)</span>
-                    )}
-                    {m.profile?.is_guest && (
-                      <span className="text-gray-400 font-normal text-xs"> · guest</span>
-                    )}
-                  </p>
-                  {editingEmailId === m.user_id ? (
-                    <div className="mt-2 space-y-2">
-                      <Input
-                        type="email"
-                        placeholder="Email address"
-                        value={emailInput}
-                        onChange={e => setEmailInput(e.target.value)}
-                        autoFocus
-                        inputMode="email"
-                        autoComplete="email"
-                      />
-                      {emailMsg && <p className="text-xs text-red-500">{emailMsg}</p>}
-                      <div className="flex gap-2">
-                        <Button size="sm" loading={updateMemberEmail.isPending} onClick={() => handleSaveMemberEmail(m.user_id)}>
-                          <Check size={14} className="mr-1" /> Save
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => { setEditingEmailId(null); setEmailMsg('') }}>
-                          Cancel
-                        </Button>
-                      </div>
+              <div key={m.user_id} className="px-4 py-3">
+                {editingMemberId === m.user_id ? (
+                  <div className="space-y-2">
+                    <Input
+                      label="Name"
+                      value={memberNameInput}
+                      onChange={e => setMemberNameInput(e.target.value)}
+                      autoFocus
+                    />
+                    <Input
+                      type="email"
+                      label="Email (optional)"
+                      value={memberEmailInput}
+                      onChange={e => setMemberEmailInput(e.target.value)}
+                      inputMode="email"
+                      autoComplete="email"
+                    />
+                    {memberEditMsg && <p className="text-xs text-red-500">{memberEditMsg}</p>}
+                    <div className="flex gap-2">
+                      <Button size="sm" loading={updateMemberProfile.isPending} onClick={() => handleSaveMember(m.user_id)}>
+                        <Check size={14} className="mr-1" /> Save
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setEditingMemberId(null)}>
+                        Cancel
+                      </Button>
                     </div>
-                  ) : (
-                    <>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                      {m.profile?.display_name?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {m.profile?.display_name}
+                        {m.user_id === user?.id && (
+                          <span className="text-gray-400 font-normal"> (you)</span>
+                        )}
+                        {m.profile?.is_guest && (
+                          <span className="text-gray-400 font-normal text-xs"> · guest</span>
+                        )}
+                      </p>
                       {m.profile?.email ? (
                         <p className="text-xs text-gray-500 mt-0.5">{m.profile.email}</p>
                       ) : (
                         <p className="text-xs text-gray-400 capitalize">{m.role}</p>
                       )}
-                    </>
-                  )}
-                </div>
-                {m.profile?.is_guest && m.user_id !== user?.id && editingEmailId !== m.user_id && (
-                  <button
-                    onClick={() => {
-                      setEditingEmailId(m.user_id)
-                      setEmailInput(m.profile?.email ?? '')
-                      setEmailMsg('')
-                    }}
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0"
-                  >
-                    <Pencil size={12} />
-                    {m.profile?.email ? 'Edit' : 'Add email'}
-                  </button>
+                    </div>
+                    {m.profile?.is_guest && m.user_id !== user?.id && (
+                      <button
+                        onClick={() => startEditMember(m.user_id, m.profile?.display_name ?? '', m.profile?.email ?? '')}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0"
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
