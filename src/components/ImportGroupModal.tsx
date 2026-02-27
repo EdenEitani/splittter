@@ -133,34 +133,56 @@ function parseCSV(content: string): ParsedCSV {
 // ── Fuzzy category matching ────────────────────────────────────────────────────
 
 const CATEGORY_ALIASES: Record<string, string> = {
+  // general
   'other': 'general',
   'misc': 'general',
   'miscellaneous': 'general',
+  // transport (merged)
   'transportation': 'transport',
+  'taxi': 'transport',
+  'uber': 'transport',
+  'taxi/uber': 'transport',
+  'car rental': 'transport',
+  'carrental': 'transport',
+  'train': 'transport',
+  'ferry': 'transport',
   'travel': 'transport',
-  'flights': 'flights',
-  'flight': 'flights',
+  // food (merged with drinks/coffee)
   'food': 'food',
   'meal': 'food',
   'restaurant': 'food',
-  'beverages': 'drinks',
-  'alcohol': 'drinks',
-  'accommodation': 'lodging',
-  'hotel': 'hotel',
-  'lodging': 'lodging',
-  'housing': 'rent',
-  'lease': 'rent',
+  'beverages': 'food',
+  'drinks': 'food',
+  'alcohol': 'food',
+  'coffee': 'food',
+  // flights
+  'flights': 'flights',
+  'flight': 'flights',
+  // accommodation (merged hotel/lodging)
+  'hotel': 'accommodation',
+  'lodging': 'accommodation',
+  'housing': 'accommodation',
+  'stay': 'accommodation',
+  // home expenses
   'rent': 'rent',
+  'lease': 'rent',
   'utilities': 'utilities',
   'electric': 'electricity',
+  'electricity': 'electricity',
   'internet': 'internet',
   'wifi': 'internet',
   'grocery': 'groceries',
+  'groceries': 'groceries',
   'supermarket': 'groceries',
-  'shopping': 'shopping',
+  // activities
   'entertainment': 'activities',
   'activity': 'activities',
+  'museum': 'activities',
+  'tours': 'activities',
+  // shopping / gifts
+  'shopping': 'shopping',
   'gift': 'gifts',
+  // fallback
   'health': 'general',
   'medical': 'general',
 }

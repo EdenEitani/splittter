@@ -164,14 +164,17 @@ export function useUpdateGroup() {
       groupId,
       name,
       base_currency,
+      type,
     }: {
       groupId: string
       name?: string
       base_currency?: string
+      type?: GroupType
     }) => {
       const update: Record<string, string> = {}
       if (name !== undefined) update.name = name
       if (base_currency !== undefined) update.base_currency = base_currency
+      if (type !== undefined) update.type = type
 
       const { error } = await supabase
         .from('groups')

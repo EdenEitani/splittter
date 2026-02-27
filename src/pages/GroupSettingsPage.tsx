@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserPlus, Check, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -8,6 +8,15 @@ import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup
 import { useAuth } from '@/hooks/useAuth'
 import { COMMON_CURRENCIES } from '@/lib/money'
 import { clsx } from 'clsx'
+import type { GroupType } from '@/types'
+
+const GROUP_TYPES: { type: GroupType; label: string; icon: React.ReactNode; desc: string }[] = [
+  { type: 'trip',      label: 'Trip',      icon: <Plane size={18} />,     desc: 'Travel & vacation' },
+  { type: 'house',     label: 'House',     icon: <Home size={18} />,      desc: 'Bills & shared housing' },
+  { type: 'event',     label: 'Event',     icon: <Calendar size={18} />,  desc: 'Party or one-time event' },
+  { type: 'roommates', label: 'Roommates', icon: <Building2 size={18} />, desc: 'Ongoing roommates' },
+  { type: 'custom',    label: 'Custom',    icon: <Sparkles size={18} />,  desc: 'Anything else' },
+]
 
 export function GroupSettingsPage() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -34,6 +43,11 @@ export function GroupSettingsPage() {
   const [editingCurrency, setEditingCurrency] = useState(false)
   const [selectedCurrency, setSelectedCurrency] = useState('')
   const [currencyMsg, setCurrencyMsg] = useState('')
+
+  // Type edit
+  const [editingType, setEditingType] = useState(false)
+  const [selectedType, setSelectedType] = useState<GroupType>('custom')
+  const [typeMsg, setTypeMsg] = useState('')
 
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -91,6 +105,26 @@ export function GroupSettingsPage() {
     setSelectedCurrency(group?.base_currency ?? 'USD')
     setEditingCurrency(true)
     setCurrencyMsg('')
+  }
+
+  async function handleSaveType() {
+    if (!selectedType || selectedType === group?.type) {
+      setEditingType(false)
+      return
+    }
+    try {
+      await updateGroup.mutateAsync({ groupId: groupId!, type: selectedType })
+      setTypeMsg(`Group type updated to ${selectedType}`)
+      setEditingType(false)
+    } catch (err) {
+      setTypeMsg((err as Error).message)
+    }
+  }
+
+  function startEditType() {
+    setSelectedType((group?.type ?? 'custom') as GroupType)
+    setEditingType(true)
+    setTypeMsg('')
   }
 
   async function handleDelete() {
@@ -151,10 +185,53 @@ export function GroupSettingsPage() {
               <div className="border-t border-gray-50" />
 
               {/* Type row */}
-              <div>
-                <p className="text-xs text-gray-400">Type</p>
-                <p className="text-sm font-medium text-gray-900 mt-0.5 capitalize">{group.type}</p>
-              </div>
+              {!editingType ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400">Type</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5 capitalize">{group.type}</p>
+                  </div>
+                  <button onClick={startEditType} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">
+                    <Pencil size={12} /> Edit
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select type</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GROUP_TYPES.map(t => (
+                      <button
+                        key={t.type}
+                        type="button"
+                        onClick={() => setSelectedType(t.type)}
+                        className={clsx(
+                          'flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border-2 transition-all',
+                          selectedType === t.type
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        )}
+                      >
+                        <span className={clsx(selectedType === t.type ? 'text-blue-600' : 'text-gray-500')}>
+                          {t.icon}
+                        </span>
+                        <span className={clsx('text-[11px] font-semibold', selectedType === t.type ? 'text-blue-700' : 'text-gray-600')}>
+                          {t.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400">{GROUP_TYPES.find(t => t.type === selectedType)?.desc}</p>
+                  {typeMsg && <p className="text-xs text-green-600">{typeMsg}</p>}
+                  <div className="flex gap-2">
+                    <Button size="sm" loading={updateGroup.isPending} onClick={handleSaveType}>
+                      <Check size={14} className="mr-1" /> Save
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditingType(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-gray-50" />
 
