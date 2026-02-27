@@ -8,10 +8,10 @@ import { CategoryGrid } from '@/components/CategoryCard'
 import { PersonCardGrid } from '@/components/PersonCard'
 import { useGroup, useGroupMembers } from '@/hooks/useGroups'
 import { useCategories } from '@/hooks/useCategories'
-import { useCreateExpense } from '@/hooks/useExpenses'
+import { useCreateExpense, useUpdateExpense, useExpenses } from '@/hooks/useExpenses'
 import { useCategorize } from '@/hooks/useCategorize'
 import { useAuth } from '@/hooks/useAuth'
-import { COMMON_CURRENCIES } from '@/lib/money'
+import { COMMON_CURRENCIES, fromMinorUnits } from '@/lib/money'
 import { clsx } from 'clsx'
 import type { ExpenseFormData, SplitMethod } from '@/types'
 import { todayISO } from '@/lib/fx'
@@ -23,14 +23,19 @@ const SPLIT_METHODS: { value: SplitMethod; label: string; desc: string }[] = [
 ]
 
 export function AddExpensePage() {
-  const { groupId } = useParams<{ groupId: string }>()
+  const { groupId, expenseId } = useParams<{ groupId: string; expenseId?: string }>()
+  const isEdit = !!expenseId
   const navigate = useNavigate()
   const { user } = useAuth()
 
   const { data: group } = useGroup(groupId!)
   const { data: members } = useGroupMembers(groupId!)
   const { data: categories } = useCategories(group?.type)
+  const { data: expenses } = useExpenses(groupId!)
   const createExpense = useCreateExpense(groupId!, group?.base_currency ?? 'USD')
+  const updateExpense = useUpdateExpense(groupId!, group?.base_currency ?? 'USD')
+
+  const existingExpense = isEdit ? expenses?.find(e => e.id === expenseId) : undefined
 
   const profiles = (members ?? []).map(m => m.profile!).filter(Boolean)
 
@@ -50,9 +55,9 @@ export function AddExpensePage() {
     custom_percents: {},
   })
 
-  // Initialize participants and currency from group
+  // Initialize participants and currency from group (create mode only)
   useEffect(() => {
-    if (members && user) {
+    if (members && user && !isEdit) {
       setForm(f => ({
         ...f,
         participant_ids: members.map(m => m.user_id),
@@ -60,7 +65,33 @@ export function AddExpensePage() {
         original_currency: group?.base_currency ?? f.original_currency,
       }))
     }
-  }, [members, user, group])
+  }, [members, user, group, isEdit])
+
+  // Pre-fill from existing expense (edit mode)
+  useEffect(() => {
+    if (!isEdit || !existingExpense) return
+    const payers = (existingExpense.participants ?? [])
+      .filter(p => p.role === 'payer')
+      .map(p => p.user_id)
+    const participants = (existingExpense.participants ?? [])
+      .filter(p => p.role === 'participant')
+      .map(p => p.user_id)
+    setForm({
+      label: existingExpense.label,
+      original_amount: fromMinorUnits(existingExpense.original_amount, existingExpense.original_currency).toString(),
+      original_currency: existingExpense.original_currency,
+      category_id: existingExpense.category_id,
+      category_confidence: existingExpense.category_confidence,
+      notes: existingExpense.notes ?? '',
+      occurred_at: existingExpense.occurred_at.slice(0, 10) + 'T12:00:00',
+      payer_ids: payers,
+      participant_ids: participants,
+      split_method: 'equal',
+      custom_amounts: {},
+      custom_percents: {},
+    })
+    setManualCategory(true)
+  }, [isEdit, existingExpense])
 
   const [showCurrencies, setShowCurrencies] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -145,7 +176,11 @@ export function AddExpensePage() {
     if (!validate()) return
 
     try {
-      await createExpense.mutateAsync(form)
+      if (isEdit && expenseId) {
+        await updateExpense.mutateAsync({ expenseId, form })
+      } else {
+        await createExpense.mutateAsync(form)
+      }
       navigate(`/group/${groupId}`)
     } catch (err) {
       setErrors({ submit: (err as Error).message })
@@ -154,8 +189,10 @@ export function AddExpensePage() {
 
   const groupCurrencySymbol = group?.base_currency ?? 'USD'
 
+  const isPending = isEdit ? updateExpense.isPending : createExpense.isPending
+
   return (
-    <Layout title="Add Expense" showBack backTo={`/group/${groupId}`}>
+    <Layout title={isEdit ? 'Edit Expense' : 'Add Expense'} showBack backTo={`/group/${groupId}`}>
       <form onSubmit={handleSubmit} className="space-y-6 pb-8">
 
         {/* ① Amount */}
@@ -432,9 +469,9 @@ export function AddExpensePage() {
           type="submit"
           fullWidth
           size="lg"
-          loading={createExpense.isPending}
+          loading={isPending}
         >
-          Save expense
+          {isEdit ? 'Update expense' : 'Save expense'}
         </Button>
       </form>
     </Layout>

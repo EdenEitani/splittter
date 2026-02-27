@@ -4,24 +4,24 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 
 export function AuthPage() {
-  const { signInWithMagicLink } = useAuth()
+  const { signIn, signUp } = useAuth()
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim()) return
+    if (!email.trim() || !password) return
     setLoading(true)
     setError('')
 
-    const { error } = await signInWithMagicLink(email.trim().toLowerCase())
-    if (error) {
-      setError(error.message)
-    } else {
-      setSent(true)
-    }
+    const { error } = mode === 'signin'
+      ? await signIn(email.trim().toLowerCase(), password)
+      : await signUp(email.trim().toLowerCase(), password)
+
+    if (error) setError(error.message)
     setLoading(false)
   }
 
@@ -39,58 +39,59 @@ export function AuthPage() {
 
         {/* Card */}
         <div className="bg-white rounded-3xl p-6 shadow-xl">
-          {sent ? (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-3">📬</div>
-              <h2 className="text-lg font-semibold text-gray-900">Check your inbox</h2>
-              <p className="text-sm text-gray-500 mt-2">
-                We sent a magic link to{' '}
-                <span className="font-medium text-gray-800">{email}</span>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {mode === 'signin' ? 'Sign in' : 'Create account'}
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                {mode === 'signin' ? 'Welcome back!' : 'Get started for free.'}
               </p>
-              <button
-                onClick={() => setSent(false)}
-                className="text-sm text-blue-600 mt-4 hover:underline"
-              >
-                Use a different email
-              </button>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Sign in</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  We'll email you a magic link — no password needed.
-                </p>
-              </div>
 
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoFocus
-                required
-                inputMode="email"
-                autoComplete="email"
-                error={error}
-              />
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoFocus
+              required
+              inputMode="email"
+              autoComplete="email"
+            />
 
-              <Button
-                type="submit"
-                fullWidth
-                size="lg"
-                loading={loading}
-                disabled={!email.trim()}
-              >
-                Send magic link
-              </Button>
-            </form>
-          )}
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              error={error}
+            />
+
+            <Button
+              type="submit"
+              fullWidth
+              size="lg"
+              loading={loading}
+              disabled={!email.trim() || !password}
+            >
+              {mode === 'signin' ? 'Sign in' : 'Create account'}
+            </Button>
+          </form>
+
+          <p className="text-center text-sm text-gray-500 mt-4">
+            {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
+            <button
+              type="button"
+              onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError('') }}
+              className="text-blue-600 font-medium hover:underline"
+            >
+              {mode === 'signin' ? 'Sign up' : 'Sign in'}
+            </button>
+          </p>
         </div>
-
-        <p className="text-center text-blue-200 text-xs mt-6">
-          No account needed — sign in creates your account automatically.
-        </p>
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import type { Expense } from '@/types'
 import { format } from 'date-fns'
@@ -6,9 +7,10 @@ interface ExpenseItemProps {
   expense: Expense
   currentUserId?: string
   onDelete?: (id: string) => void
+  onEdit?: (id: string) => void
 }
 
-export function ExpenseItem({ expense, currentUserId, onDelete }: ExpenseItemProps) {
+export function ExpenseItem({ expense, currentUserId, onDelete, onEdit }: ExpenseItemProps) {
   const payers = (expense.participants ?? []).filter(p => p.role === 'payer')
   const payerNames = payers
     .map(p => p.profile?.display_name?.split(' ')[0] ?? '…')
@@ -60,15 +62,28 @@ export function ExpenseItem({ expense, currentUserId, onDelete }: ExpenseItemPro
         )}
       </div>
 
-      {/* Delete */}
-      {canDelete && onDelete && (
-        <button
-          onClick={() => onDelete(expense.id)}
-          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-          title="Delete expense"
-        >
-          ×
-        </button>
+      {/* Actions */}
+      {canDelete && (
+        <div className="flex-shrink-0 flex flex-col gap-1">
+          {onEdit && (
+            <button
+              onClick={() => onEdit(expense.id)}
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-blue-50 text-gray-300 hover:text-blue-400 transition-colors"
+              title="Edit expense"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(expense.id)}
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+              title="Delete expense"
+            >
+              ×
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

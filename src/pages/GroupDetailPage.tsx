@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Receipt, CreditCard, Users } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
@@ -17,6 +17,7 @@ type Tab = 'activity' | 'balances' | 'members'
 
 export function GroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('activity')
 
   const { user } = useAuth()
@@ -119,6 +120,7 @@ export function GroupDetailPage() {
                     expense={item.data}
                     currentUserId={user?.id}
                     onDelete={id => deleteExpense.mutate(id)}
+                    onEdit={id => navigate(`/group/${groupId}/edit-expense/${id}`)}
                   />
                 ) : (
                   <PaymentItem
@@ -183,7 +185,7 @@ export function GroupDetailPage() {
       </div>
 
       {/* FABs */}
-      <div className="fixed bottom-20 right-4 flex flex-col gap-3 z-30">
+      <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-50">
         <Link
           to={`/group/${groupId}/add-payment`}
           className="flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-md px-4 h-11 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors"

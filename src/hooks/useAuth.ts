@@ -10,21 +10,14 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) loadProfile(session.user.id)
-      else setLoading(false)
-    })
-
-    // Subscribe to auth changes
+    // onAuthStateChange fires immediately with INITIAL_SESSION —
+    // use it as the single source of truth (Supabase v2 recommended pattern).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
-          await loadProfile(session.user.id)
+          loadProfile(session.user.id)
         } else {
           setProfile(null)
           setLoading(false)
@@ -36,40 +29,46 @@ export function useAuth() {
   }, [])
 
   async function loadProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
 
-    if (!error && data) {
-      setProfile(data as Profile)
-    } else if (!data) {
-      // Profile not yet created (trigger might be slow), create it
-      const user = (await supabase.auth.getUser()).data.user
-      if (user) {
-        const displayName =
-          user.user_metadata?.full_name ??
-          user.email?.split('@')[0] ??
-          'User'
-        await supabase.from('profiles').upsert({
-          id: userId,
-          display_name: displayName,
-          avatar_url: user.user_metadata?.avatar_url ?? null,
-        })
-        setProfile({ id: userId, display_name: displayName, avatar_url: null })
+      if (data) {
+        setProfile(data as Profile)
+      } else {
+        // Profile not yet created (trigger might be slow), create it
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (authUser) {
+          const displayName =
+            authUser.user_metadata?.full_name ??
+            authUser.email?.split('@')[0] ??
+            'User'
+          await supabase.from('profiles').upsert({
+            id: userId,
+            display_name: displayName,
+            avatar_url: authUser.user_metadata?.avatar_url ?? null,
+            is_guest: false,
+          })
+          setProfile({ id: userId, display_name: displayName, avatar_url: null })
+        }
       }
+    } catch (err) {
+      console.error('[auth] loadProfile error:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
-  async function signInWithMagicLink(email: string) {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin + (import.meta.env.BASE_URL || '/'),
-      },
-    })
+  async function signIn(email: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    return { error }
+  }
+
+  async function signUp(email: string, password: string) {
+    const { error } = await supabase.auth.signUp({ email, password })
     return { error }
   }
 
@@ -89,5 +88,5 @@ export function useAuth() {
     return { error }
   }
 
-  return { session, user, profile, loading, signInWithMagicLink, signOut, updateProfile }
+  return { session, user, profile, loading, signIn, signUp, signOut, updateProfile }
 }

@@ -89,6 +89,7 @@ export function convertAmount(
 export const COMMON_CURRENCIES = [
   { code: 'USD', symbol: '$', flag: '🇺🇸' },
   { code: 'EUR', symbol: '€', flag: '🇪🇺' },
+  { code: 'ILS', symbol: '₪', flag: '🇮🇱' },
   { code: 'GBP', symbol: '£', flag: '🇬🇧' },
   { code: 'JPY', symbol: '¥', flag: '🇯🇵' },
   { code: 'CAD', symbol: 'C$', flag: '🇨🇦' },
@@ -106,7 +107,6 @@ export const COMMON_CURRENCIES = [
   { code: 'HKD', symbol: '$', flag: '🇭🇰' },
   { code: 'KRW', symbol: '₩', flag: '🇰🇷' },
   { code: 'THB', symbol: '฿', flag: '🇹🇭' },
-  { code: 'ILS', symbol: '₪', flag: '🇮🇱' },
 ]
 
 export function getCurrencySymbol(code: string): string {

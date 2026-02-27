@@ -100,6 +100,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/group/:groupId/edit-expense/:expenseId"
+        element={
+          <ProtectedRoute>
+            <AddExpensePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/group/:groupId/add-payment"
         element={
           <ProtectedRoute>

@@ -12,6 +12,7 @@ export interface Profile {
   display_name: string
   avatar_url: string | null
   email?: string
+  is_guest?: boolean
   created_at?: string
 }
 

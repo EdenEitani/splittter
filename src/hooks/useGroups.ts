@@ -119,29 +119,59 @@ export function useAddMember() {
   return useMutation({
     mutationFn: async ({
       groupId,
+      name,
       email,
     }: {
       groupId: string
-      email: string
+      name: string
+      email?: string
     }) => {
-      // Look up profile by email
-      const { data: profile, error: profileError } = await supabase
+      // Create a guest profile (no auth account needed)
+      const guestId = crypto.randomUUID()
+      const { error: profileError } = await supabase
         .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle()
+        .insert({
+          id: guestId,
+          display_name: name.trim(),
+          email: email?.trim().toLowerCase() || null,
+          is_guest: true,
+        })
 
       if (profileError) throw profileError
-      if (!profile) throw new Error(`No user found with email ${email}`)
 
       const { error } = await supabase
         .from('group_members')
-        .insert({ group_id: groupId, user_id: profile.id, role: 'member' })
+        .insert({ group_id: groupId, user_id: guestId, role: 'member' })
 
       if (error) throw error
     },
     onSuccess: (_data, { groupId }) => {
       qc.invalidateQueries({ queryKey: groupKeys.members(groupId) })
+    },
+  })
+}
+
+export function useUpdateGroup() {
+  const qc = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      base_currency,
+    }: {
+      groupId: string
+      base_currency: string
+    }) => {
+      const { error } = await supabase
+        .from('groups')
+        .update({ base_currency })
+        .eq('id', groupId)
+
+      if (error) throw error
+    },
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
+      qc.invalidateQueries({ queryKey: groupKeys.all })
     },
   })
 }
