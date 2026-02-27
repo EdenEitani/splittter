@@ -181,11 +181,11 @@ function parseSplitwiseCSV(content: string): Omit<ParsedCSV, 'groupName' | 'curr
     if (Object.values(memberValues).every(v => v === 0)) continue
 
     if (category === 'Payment') {
-      // Positive column = received payment (to_user), negative = sent payment (from_user)
+      // Positive column = sent payment (from_user, payer), negative = received payment (to_user)
       let fromName = '', toName = ''
       for (const [name, amt] of Object.entries(memberValues)) {
-        if (amt > 0) toName = name
-        if (amt < 0) fromName = name
+        if (amt > 0) fromName = name
+        if (amt < 0) toName = name
       }
       if (fromName && toName && cost > 0)
         payments.push({ date, amount: cost, currency: rowCurrency, fromName, toName, notes: description })
