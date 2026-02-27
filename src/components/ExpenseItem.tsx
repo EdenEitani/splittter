@@ -11,10 +11,12 @@ interface ExpenseItemProps {
 }
 
 export function ExpenseItem({ expense, currentUserId, onDelete, onEdit }: ExpenseItemProps) {
-  const payers = (expense.participants ?? []).filter(p => p.role === 'payer')
+  const participants = expense.participants ?? []
+  const payers = participants.filter(p => p.role === 'payer')
   const payerNames = payers
     .map(p => p.profile?.display_name?.split(' ')[0] ?? '…')
     .join(', ')
+  const debtors = participants.filter(p => p.role === 'participant' && p.share_amount_group_currency)
 
   const isSameAmount = expense.original_currency === expense.group_currency
   const canDelete = currentUserId === expense.created_by
@@ -57,6 +59,25 @@ export function ExpenseItem({ expense, currentUserId, onDelete, onEdit }: Expens
             <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">
               <span>⚠</span>
               <span>{Math.round((expense.category_confidence ?? 0) * 100)}% confident</span>
+            </div>
+          )}
+
+          {debtors.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-50 flex flex-wrap gap-x-3 gap-y-1.5">
+              {debtors.map(p => {
+                const name = p.profile?.display_name ?? '?'
+                const initial = name[0].toUpperCase()
+                return (
+                  <div key={p.user_id} className="flex items-center gap-1" title={name}>
+                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-bold text-blue-500 flex-shrink-0">
+                      {initial}
+                    </div>
+                    <span className="text-[11px] text-gray-400 font-medium">
+                      {formatMoney(p.share_amount_group_currency!, expense.group_currency)}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
