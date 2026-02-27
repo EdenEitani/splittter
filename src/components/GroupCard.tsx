@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Users, Plane, Home, Calendar, Building2, Sparkles } from 'lucide-react'
+import { Users, Plane, Home, Calendar, Building2, Sparkles, ChevronRight } from 'lucide-react'
 import type { Group } from '@/types'
 
 const GROUP_ICONS = {
@@ -18,6 +18,14 @@ const GROUP_COLORS = {
   custom: 'bg-gray-100 text-gray-600',
 }
 
+const GROUP_BG_ACCENT = {
+  trip: 'from-sky-50 to-white',
+  house: 'from-green-50 to-white',
+  event: 'from-violet-50 to-white',
+  roommates: 'from-amber-50 to-white',
+  custom: 'from-gray-50 to-white',
+}
+
 interface GroupCardProps {
   group: Group
   memberCount?: number
@@ -33,6 +41,7 @@ export function GroupCard({
 }: GroupCardProps) {
   const Icon = GROUP_ICONS[group.type] ?? Users
   const colorClass = GROUP_COLORS[group.type] ?? GROUP_COLORS.custom
+  const bgAccent = GROUP_BG_ACCENT[group.type] ?? GROUP_BG_ACCENT.custom
 
   const formatBalance = (amount: number, cur: string) => {
     try {
@@ -47,12 +56,14 @@ export function GroupCard({
     }
   }
 
+  const showBalance = netBalance !== undefined && currency
+
   return (
     <Link
       to={`/group/${group.id}`}
-      className="block bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 p-4"
+      className={`block bg-gradient-to-r ${bgAccent} rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 overflow-hidden`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3 p-4">
         {/* Icon */}
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorClass}`}>
           <Icon size={20} />
@@ -66,28 +77,31 @@ export function GroupCard({
           </p>
         </div>
 
-        {/* Balance */}
-        {netBalance !== undefined && currency && (
-          <div className="flex-shrink-0 text-right">
-            {netBalance === 0 ? (
-              <span className="text-xs font-medium text-gray-400">Settled</span>
-            ) : netBalance > 0 ? (
-              <>
-                <div className="text-xs text-gray-400">You're owed</div>
-                <div className="text-sm font-semibold text-green-600">
-                  +{formatBalance(netBalance, currency)}
+        {/* Balance + chevron */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {showBalance && (
+            <div className="text-right">
+              {netBalance === 0 ? (
+                <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Settled</span>
+              ) : netBalance! > 0 ? (
+                <div>
+                  <div className="text-[10px] text-gray-400 leading-tight">owed to you</div>
+                  <div className="text-sm font-bold text-green-600">
+                    +{formatBalance(netBalance!, currency!)}
+                  </div>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="text-xs text-gray-400">You owe</div>
-                <div className="text-sm font-semibold text-red-500">
-                  {formatBalance(netBalance, currency)}
+              ) : (
+                <div>
+                  <div className="text-[10px] text-gray-400 leading-tight">you owe</div>
+                  <div className="text-sm font-bold text-red-500">
+                    {formatBalance(netBalance!, currency!)}
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+          <ChevronRight size={16} className="text-gray-300" />
+        </div>
       </div>
     </Link>
   )

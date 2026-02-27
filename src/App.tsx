@@ -12,6 +12,7 @@ import { AddExpensePage } from '@/pages/AddExpensePage'
 import { AddPaymentPage } from '@/pages/AddPaymentPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { GroupSettingsPage } from '@/pages/GroupSettingsPage'
+import { NotificationsPage } from '@/pages/NotificationsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -128,6 +129,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <NotificationsPage />
           </ProtectedRoute>
         }
       />

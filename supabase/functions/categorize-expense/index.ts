@@ -15,50 +15,84 @@ const corsHeaders = {
 type KeywordMap = Record<string, string[]>
 
 const GLOBAL_KEYWORDS: KeywordMap = {
-  'Food':       ['restaurant', 'food', 'lunch', 'dinner', 'breakfast', 'meal', 'eat', 'pizza', 'burger', 'sushi'],
-  'Drinks':     ['bar', 'beer', 'wine', 'cocktail', 'drinks', 'alcohol', 'pub'],
-  'Coffee':     ['coffee', 'cafe', 'starbucks', 'latte', 'espresso', 'cappuccino'],
-  'Shopping':   ['shop', 'mall', 'amazon', 'buy', 'purchase', 'store', 'market'],
-  'Transport':  ['bus', 'metro', 'subway', 'train', 'tram', 'transport', 'commute'],
-  'Taxi/Uber':  ['uber', 'lyft', 'taxi', 'cab', 'ride', 'bolt', 'grab'],
+  'Food':       ['restaurant', 'food', 'lunch', 'dinner', 'breakfast', 'meal', 'eat', 'pizza', 'burger', 'sushi',
+                 'מסעדה', 'אוכל', 'ארוחה', 'ארוחת', 'פיצה', 'אוכל', 'בורגר', 'סושי', 'פלאפל', 'שוורמה', 'אוכל'],
+  'Drinks':     ['bar', 'beer', 'wine', 'cocktail', 'drinks', 'alcohol', 'pub',
+                 'בר', 'בירה', 'יין', 'קוקטייל', 'משקאות', 'אלכוהול'],
+  'Coffee':     ['coffee', 'cafe', 'starbucks', 'latte', 'espresso', 'cappuccino',
+                 'קפה', 'בית קפה', 'לאטה', 'אספרסו', 'קפוצ'],
+  'Shopping':   ['shop', 'mall', 'amazon', 'buy', 'purchase', 'store', 'market',
+                 'קניות', 'קניון', 'חנות', 'קנייה', 'שוק'],
+  'Transport':  ['bus', 'metro', 'subway', 'train', 'tram', 'transport', 'commute',
+                 'אוטובוס', 'רכבת', 'מטרו', 'תחבורה', 'טרמפ'],
+  'Taxi/Uber':  ['uber', 'lyft', 'taxi', 'cab', 'ride', 'bolt', 'grab',
+                 'מונית', 'גט', 'טקסי', 'נסיעה'],
 }
 
 const TYPE_KEYWORDS: Record<string, KeywordMap> = {
   trip: {
-    'Flights':    ['flight', 'plane', 'airline', 'airport', 'airfare', 'united', 'delta', 'lufthansa', 'ryanair'],
-    'Hotel':      ['hotel', 'motel', 'resort', 'marriott', 'hilton', 'sheraton', 'inn'],
-    'Lodging':    ['airbnb', 'vrbo', 'hostel', 'accommodation', 'booking', 'apartment', 'stay'],
-    'Activities': ['tour', 'ticket', 'museum', 'show', 'concert', 'theme park', 'attraction', 'zoo'],
-    'Car Rental': ['rental', 'rent a car', 'hertz', 'avis', 'enterprise', 'sixt'],
-    'Train':      ['amtrak', 'eurostar', 'train', 'rail', 'tgv', 'intercity'],
-    'Tours':      ['guided', 'sightseeing', 'walking tour', 'excursion'],
+    'Flights':    ['flight', 'plane', 'airline', 'airport', 'airfare', 'united', 'delta', 'lufthansa', 'ryanair',
+                   'טיסה', 'טיסות', 'נמל תעופה', 'אל על', 'ווינדסור'],
+    'Hotel':      ['hotel', 'motel', 'resort', 'marriott', 'hilton', 'sheraton', 'inn',
+                   'מלון', 'אכסניה', 'ריזורט'],
+    'Lodging':    ['airbnb', 'vrbo', 'hostel', 'accommodation', 'booking', 'apartment', 'stay',
+                   'דירה', 'לינה', 'הוסטל', 'אירוח'],
+    'Activities': ['tour', 'ticket', 'museum', 'show', 'concert', 'theme park', 'attraction', 'zoo',
+                   'כרטיס', 'מוזיאון', 'הופעה', 'קונצרט', 'גן חיות', 'אטרקציה', 'סיור'],
+    'Car Rental': ['rental', 'rent a car', 'hertz', 'avis', 'enterprise', 'sixt',
+                   'השכרת רכב', 'השכרה', 'רכב'],
+    'Train':      ['amtrak', 'eurostar', 'train', 'rail', 'tgv', 'intercity',
+                   'רכבת', 'קרון'],
+    'Tours':      ['guided', 'sightseeing', 'walking tour', 'excursion',
+                   'סיור', 'טיול', 'מדריך'],
   },
   house: {
-    'Rent':        ['rent', 'lease', 'landlord'],
-    'Electricity': ['electricity', 'power', 'electric', 'pg&e', 'con ed', 'utility'],
-    'Water':       ['water', 'sewage', 'plumbing'],
-    'Gas':         ['gas', 'heating', 'propane'],
-    'Internet':    ['internet', 'wifi', 'broadband', 'comcast', 'at&t', 'spectrum', 'fiber'],
-    'Groceries':   ['grocery', 'supermarket', 'whole foods', 'trader joe', 'kroger', 'safeway', 'aldi'],
-    'Cleaning':    ['cleaning', 'laundry', 'detergent', 'mop', 'vacuum', 'trash'],
-    'Repairs':     ['repair', 'fix', 'maintenance', 'plumber', 'electrician', 'contractor'],
-    'Subscriptions': ['netflix', 'spotify', 'hulu', 'amazon prime', 'disney', 'subscription'],
+    'Rent':        ['rent', 'lease', 'landlord',
+                   'שכירות', 'שכד', 'שכ"ד', 'שכ״ד', 'דמי שכירות', 'משכירה'],
+    'Electricity': ['electricity', 'power', 'electric', 'pg&e', 'con ed', 'utility',
+                   'חשמל', 'חברת חשמל', 'חשבון חשמל'],
+    'Water':       ['water', 'sewage', 'plumbing',
+                   'מים', 'ביוב', 'צנרת'],
+    'Gas':         ['gas', 'heating', 'propane',
+                   'גז', 'חימום'],
+    'Internet':    ['internet', 'wifi', 'broadband', 'comcast', 'at&t', 'spectrum', 'fiber',
+                   'אינטרנט', 'ווייפי', 'סיב אופטי', 'בזק', 'הוט'],
+    'Groceries':   ['grocery', 'supermarket', 'whole foods', 'trader joe', 'kroger', 'safeway', 'aldi',
+                   'קניות', 'סופרמרקט', 'מכולת', 'רמי לוי', 'שופרסל', 'ביג', 'מגה', 'יינות ביתן'],
+    'Cleaning':    ['cleaning', 'laundry', 'detergent', 'mop', 'vacuum', 'trash',
+                   'ניקיון', 'כביסה', 'אשפה', 'שואב אבק'],
+    'Repairs':     ['repair', 'fix', 'maintenance', 'plumber', 'electrician', 'contractor',
+                   'תיקון', 'אחזקה', 'שיפוץ', 'נגר', 'חשמלאי', 'אינסטלטור'],
+    'Subscriptions': ['netflix', 'spotify', 'hulu', 'amazon prime', 'disney', 'subscription',
+                   'נטפליקס', 'ספוטיפיי', 'מנוי', 'הוט', 'יס', 'סלקום', 'פרטנר'],
   },
   event: {
-    'Venue':    ['venue', 'hall', 'space', 'location', 'booking'],
-    'Catering': ['catering', 'buffet', 'food service', 'appetizer', 'dessert'],
-    'Decor':    ['decoration', 'flowers', 'balloons', 'banner', 'tablecloth'],
-    'Music':    ['dj', 'band', 'music', 'speaker', 'microphone'],
-    'Photos':   ['photographer', 'photos', 'camera', 'video'],
-    'Gifts':    ['gift', 'present', 'wrap', 'ribbon'],
+    'Venue':    ['venue', 'hall', 'space', 'location', 'booking',
+                'אולם', 'מקום', 'חלל'],
+    'Catering': ['catering', 'buffet', 'food service', 'appetizer', 'dessert',
+                'קייטרינג', 'בופה', 'כיבוד', 'מזון'],
+    'Decor':    ['decoration', 'flowers', 'balloons', 'banner', 'tablecloth',
+                'עיצוב', 'פרחים', 'בלונים', 'קישוטים'],
+    'Music':    ['dj', 'band', 'music', 'speaker', 'microphone',
+                'דיג׳יי', 'להקה', 'מוזיקה', 'רמקול'],
+    'Photos':   ['photographer', 'photos', 'camera', 'video',
+                'צלם', 'תמונות', 'צילום', 'וידאו'],
+    'Gifts':    ['gift', 'present', 'wrap', 'ribbon',
+                'מתנה', 'מתנות', 'אריזה'],
   },
   roommates: {
-    'Rent':          ['rent', 'lease'],
-    'Utilities':     ['utility', 'electric', 'gas', 'water', 'bill'],
-    'Internet':      ['internet', 'wifi', 'cable'],
-    'Groceries':     ['grocery', 'food', 'supermarket'],
-    'Household':     ['soap', 'toilet paper', 'cleaning', 'supplies', 'household'],
-    'Subscriptions': ['netflix', 'hulu', 'spotify', 'subscription'],
+    'Rent':          ['rent', 'lease',
+                     'שכירות', 'שכד', 'שכ"ד', 'שכ״ד'],
+    'Utilities':     ['utility', 'electric', 'gas', 'water', 'bill',
+                     'חשבון', 'חשמל', 'מים', 'גז', 'ארנונה'],
+    'Internet':      ['internet', 'wifi', 'cable',
+                     'אינטרנט', 'ווייפי', 'בזק'],
+    'Groceries':     ['grocery', 'food', 'supermarket',
+                     'קניות', 'סופרמרקט', 'מכולת', 'אוכל'],
+    'Household':     ['soap', 'toilet paper', 'cleaning', 'supplies', 'household',
+                     'ניקיון', 'נייר', 'סבון', 'ציוד'],
+    'Subscriptions': ['netflix', 'hulu', 'spotify', 'subscription',
+                     'נטפליקס', 'מנוי'],
   },
   custom: {},
 }
@@ -68,6 +102,7 @@ function heuristicClassify(
   groupType: string,
   categories: { id: string; name: string }[]
 ): { category_id: string; confidence: number; reasoning: string } | null {
+  // Normalize: lowercase for Latin, keep Hebrew as-is (already case-invariant)
   const lower = label.toLowerCase()
   const typeMap = TYPE_KEYWORDS[groupType] ?? {}
 
@@ -144,7 +179,7 @@ Deno.serve(async (req: Request) => {
     if (openaiKey && cats.length > 0) {
       const categoryList = cats.map(c => `- ${c.name} (id: ${c.id})`).join('\n')
 
-      const prompt = `You are an expense categorization assistant.
+      const prompt = `You are an expense categorization assistant. You support English and Hebrew labels.
 
 Group type: ${group_type}
 Expense label: "${label}"
@@ -159,7 +194,7 @@ Respond ONLY with valid JSON (no markdown, no explanation outside JSON):
   "reasoning": "<one sentence explanation>"
 }
 
-Pick the most appropriate category. If none fit well, use the "General" or "Other" category id.`
+Pick the most appropriate category. The label may be in Hebrew — interpret it accordingly. If none fit well, use the "General" or "Other" category id.`
 
       try {
         const llmRes = await fetch('https://api.openai.com/v1/chat/completions', {
