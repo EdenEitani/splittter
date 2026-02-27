@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Settings, ArrowLeft, Bell } from 'lucide-react'
 import { clsx } from 'clsx'
 import appIcon from '@/assets/splittter.png'
@@ -22,6 +22,7 @@ export function Layout({
   noPad,
 }: LayoutProps) {
   const location = useLocation()
+  const navigate = useNavigate()
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -74,12 +75,21 @@ export function Layout({
           <header className="md:hidden sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
             <div className="flex items-center h-14 px-4 gap-2">
               {showBack && (
-                <Link
-                  to={backTo ?? (-1 as unknown as string)}
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors -ml-1"
-                >
-                  <ArrowLeft size={20} className="text-gray-600" />
-                </Link>
+                backTo ? (
+                  <Link
+                    to={backTo}
+                    className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors -ml-1"
+                  >
+                    <ArrowLeft size={20} className="text-gray-600" />
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => navigate(-1)}
+                    className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors -ml-1"
+                  >
+                    <ArrowLeft size={20} className="text-gray-600" />
+                  </button>
+                )
               )}
               <h1 className="flex-1 text-lg font-semibold text-gray-900 truncate">{title}</h1>
               {headerRight}
@@ -100,12 +110,21 @@ export function Layout({
         {(title || headerRight) && (
           <header className="hidden md:flex items-center h-16 px-6 gap-3 bg-white border-b border-gray-100 sticky top-0 z-40">
             {showBack && (
-              <Link
-                to={backTo ?? (-1 as unknown as string)}
-                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
-              >
-                <ArrowLeft size={20} className="text-gray-600" />
-              </Link>
+              backTo ? (
+                <Link
+                  to={backTo}
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <ArrowLeft size={20} className="text-gray-600" />
+                </Link>
+              ) : (
+                <button
+                  onClick={() => navigate(-1)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <ArrowLeft size={20} className="text-gray-600" />
+                </button>
+              )
             )}
             <h1 className="flex-1 text-2xl font-bold text-gray-900 truncate">{title}</h1>
             {headerRight}
