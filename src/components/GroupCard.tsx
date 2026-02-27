@@ -80,16 +80,21 @@ export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
       to={`/group/${group.id}`}
       className="block bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 p-5"
     >
-      {/* Icon + status badge */}
-      <div className="flex items-start justify-between mb-3">
+      {/* Icon + name + status badge */}
+      <div className="flex items-center gap-3 mb-4">
         <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0', iconColor)}>
           <Icon size={22} />
         </div>
-
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-gray-900 text-lg leading-tight truncate">{group.name}</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {members.length} member{members.length !== 1 ? 's' : ''}
+          </p>
+        </div>
         {showBalance && (
           <span
             className={clsx(
-              'text-xs font-semibold px-2.5 py-1 rounded-full',
+              'text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0',
               isOwed && 'bg-emerald-100 text-emerald-700',
               isOwe && 'bg-red-100 text-red-600',
               isSettled && 'bg-gray-100 text-gray-500',
@@ -99,12 +104,6 @@ export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
           </span>
         )}
       </div>
-
-      {/* Name + member count */}
-      <h3 className="font-bold text-gray-900 text-base leading-tight mb-0.5">{group.name}</h3>
-      <p className="text-xs text-gray-400 mb-4">
-        {members.length} member{members.length !== 1 ? 's' : ''}
-      </p>
 
       {/* Balance row */}
       {showBalance && (

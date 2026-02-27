@@ -287,6 +287,23 @@ export function useUserGroupsBalance(userId: string | undefined) {
   })
 }
 
+export function useUpdateMemberEmail() {
+  const qc = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ userId, email }: { userId: string; email: string; groupId: string }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ email: email.trim().toLowerCase() || null })
+        .eq('id', userId)
+      if (error) throw error
+    },
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: groupKeys.members(groupId) })
+    },
+  })
+}
+
 export function useDeleteGroup() {
   const qc = useQueryClient()
 

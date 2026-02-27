@@ -1,6 +1,7 @@
 import { formatMoney } from '@/lib/money'
 import { simplifyDebts } from '@/lib/balance'
 import { ArrowRight, CheckCircle } from 'lucide-react'
+import { clsx } from 'clsx'
 import type { Expense, UserBalance } from '@/types'
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
@@ -184,48 +185,46 @@ export function BalanceSummary({
 
   return (
     <div className="space-y-3">
-      {/* Per-user balances */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b border-gray-50">
-          <h3 className="text-sm font-semibold text-gray-700">Balances</h3>
+      {/* Per-user balances — individual cards */}
+      {balances.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-sm text-gray-400">
+          No members yet
         </div>
-        {balances.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-gray-400">No members yet</div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {balances.map(b => (
-              <div key={b.user_id} className="px-4 py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-600">
-                    {b.profile.display_name[0].toUpperCase()}
-                  </div>
-                  <span className="text-sm text-gray-800 font-medium">
+      ) : (
+        <div className="space-y-3">
+          {balances.map(b => (
+            <div key={b.user_id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className={`h-1 ${b.net_minor > 0 ? 'bg-emerald-400' : b.net_minor < 0 ? 'bg-rose-400' : 'bg-gray-200'}`} />
+              <div className="px-4 py-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600 flex-shrink-0">
+                  {b.profile.display_name[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">
                     {b.profile.display_name.split(' ')[0]}
                     {b.user_id === currentUserId && (
                       <span className="text-gray-400 font-normal"> (you)</span>
                     )}
-                  </span>
+                  </p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">
+                    {b.net_minor === 0 ? 'settled up' : b.net_minor > 0 ? 'gets back' : 'owes'}
+                  </p>
                 </div>
-                <span
-                  className={
-                    b.net_minor === 0
-                      ? 'text-sm text-gray-400'
-                      : b.net_minor > 0
-                      ? 'text-sm font-semibold text-green-600'
-                      : 'text-sm font-semibold text-red-500'
-                  }
-                >
+                <p className={clsx(
+                  'text-xl font-bold flex-shrink-0',
+                  b.net_minor > 0 ? 'text-emerald-500' : b.net_minor < 0 ? 'text-rose-500' : 'text-gray-400',
+                )}>
                   {b.net_minor === 0
-                    ? 'Settled'
+                    ? '—'
                     : b.net_minor > 0
                     ? `+${formatMoney(b.net_minor, currency)}`
                     : formatMoney(b.net_minor, currency)}
-                </span>
+                </p>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Simplified debts */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
@@ -233,9 +232,9 @@ export function BalanceSummary({
           <h3 className="text-sm font-semibold text-gray-700">Who pays whom</h3>
         </div>
         {allSettled ? (
-          <div className="px-4 py-4 flex items-center gap-2 text-green-600">
-            <CheckCircle size={16} />
-            <span className="text-sm font-medium">All settled up!</span>
+          <div className="px-4 py-5 flex items-center gap-2 text-emerald-600">
+            <CheckCircle size={18} />
+            <span className="text-sm font-semibold">All settled up!</span>
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
@@ -247,22 +246,22 @@ export function BalanceSummary({
               const isYou = d.from_user_id === currentUserId
 
               return (
-                <div key={i} className="px-4 py-2.5 flex items-center justify-between">
+                <div key={i} className="px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-sm">
-                    <span className={isYou ? 'font-semibold text-blue-700' : 'text-gray-700'}>
+                    <span className={clsx('font-semibold', isYou ? 'text-blue-700' : 'text-gray-800')}>
                       {isYou ? 'You' : fromName}
                     </span>
                     <ArrowRight size={14} className="text-gray-300" />
                     <span className="text-gray-700">{toName}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-900">
+                    <span className="text-sm font-bold text-gray-900">
                       {formatMoney(d.amount_minor, currency)}
                     </span>
                     {isYou && onSettle && (
                       <button
                         onClick={() => onSettle(d.from_user_id, d.to_user_id)}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg transition-colors"
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
                       >
                         Settle
                       </button>

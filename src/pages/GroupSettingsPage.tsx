@@ -4,7 +4,7 @@ import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, 
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup } from '@/hooks/useGroups'
+import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup, useUpdateMemberEmail } from '@/hooks/useGroups'
 import { useAuth } from '@/hooks/useAuth'
 import { COMMON_CURRENCIES } from '@/lib/money'
 import { clsx } from 'clsx'
@@ -27,12 +27,18 @@ export function GroupSettingsPage() {
   const addMember = useAddMember()
   const updateGroup = useUpdateGroup()
   const deleteGroup = useDeleteGroup()
+  const updateMemberEmail = useUpdateMemberEmail()
 
   // Add member form
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [msg, setMsg] = useState('')
   const [memberError, setMemberError] = useState('')
+
+  // Email editing per member
+  const [editingEmailId, setEditingEmailId] = useState<string | null>(null)
+  const [emailInput, setEmailInput] = useState('')
+  const [emailMsg, setEmailMsg] = useState('')
 
   // Name edit
   const [editingName, setEditingName] = useState(false)
@@ -64,6 +70,16 @@ export function GroupSettingsPage() {
       setEmail('')
     } catch (err) {
       setMemberError((err as Error).message)
+    }
+  }
+
+  async function handleSaveMemberEmail(userId: string) {
+    try {
+      await updateMemberEmail.mutateAsync({ userId, email: emailInput, groupId: groupId! })
+      setEmailMsg('Email saved!')
+      setEditingEmailId(null)
+    } catch (err) {
+      setEmailMsg((err as Error).message)
     }
   }
 
@@ -292,10 +308,10 @@ export function GroupSettingsPage() {
           <div className="divide-y divide-gray-50">
             {(members ?? []).map(m => (
               <div key={m.user_id} className="px-4 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm">
+                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm flex-shrink-0">
                   {m.profile?.display_name?.[0]?.toUpperCase() ?? '?'}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">
                     {m.profile?.display_name}
                     {m.user_id === user?.id && (
@@ -305,8 +321,50 @@ export function GroupSettingsPage() {
                       <span className="text-gray-400 font-normal text-xs"> · guest</span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-400 capitalize">{m.role}</p>
+                  {editingEmailId === m.user_id ? (
+                    <div className="mt-2 space-y-2">
+                      <Input
+                        type="email"
+                        placeholder="Email address"
+                        value={emailInput}
+                        onChange={e => setEmailInput(e.target.value)}
+                        autoFocus
+                        inputMode="email"
+                        autoComplete="email"
+                      />
+                      {emailMsg && <p className="text-xs text-red-500">{emailMsg}</p>}
+                      <div className="flex gap-2">
+                        <Button size="sm" loading={updateMemberEmail.isPending} onClick={() => handleSaveMemberEmail(m.user_id)}>
+                          <Check size={14} className="mr-1" /> Save
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => { setEditingEmailId(null); setEmailMsg('') }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {m.profile?.email ? (
+                        <p className="text-xs text-gray-500 mt-0.5">{m.profile.email}</p>
+                      ) : (
+                        <p className="text-xs text-gray-400 capitalize">{m.role}</p>
+                      )}
+                    </>
+                  )}
                 </div>
+                {m.profile?.is_guest && m.user_id !== user?.id && editingEmailId !== m.user_id && (
+                  <button
+                    onClick={() => {
+                      setEditingEmailId(m.user_id)
+                      setEmailInput(m.profile?.email ?? '')
+                      setEmailMsg('')
+                    }}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0"
+                  >
+                    <Pencil size={12} />
+                    {m.profile?.email ? 'Edit' : 'Add email'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
