@@ -36,10 +36,24 @@ export function Layout({
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          <SidebarItem to="/" icon={<Home size={18} />} label="Groups" active={location.pathname === '/'} />
-          <SidebarItem to="/notifications" icon={<Bell size={18} />} label="Notifications" active={location.pathname === '/notifications'} />
-          <SidebarItem to="/settings" icon={<Settings size={18} />} label="Settings" active={location.pathname === '/settings'} />
+        <nav className="flex-1 p-3 overflow-y-auto space-y-5">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-3 mb-1.5">
+              Menu
+            </p>
+            <div className="space-y-0.5">
+              <SidebarItem to="/" icon={<Home size={18} />} label="Dashboard" active={location.pathname === '/'} />
+              <SidebarItem to="/notifications" icon={<Bell size={18} />} label="Activity" active={location.pathname === '/notifications'} />
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-3 mb-1.5">
+              Personal
+            </p>
+            <div className="space-y-0.5">
+              <SidebarItem to="/settings" icon={<Settings size={18} />} label="Settings" active={location.pathname === '/settings'} />
+            </div>
+          </div>
         </nav>
 
         {/* Bottom area */}
@@ -93,7 +107,7 @@ export function Layout({
                 <ArrowLeft size={20} className="text-gray-600" />
               </Link>
             )}
-            <h1 className="flex-1 text-xl font-semibold text-gray-900 truncate">{title}</h1>
+            <h1 className="flex-1 text-2xl font-bold text-gray-900 truncate">{title}</h1>
             {headerRight}
           </header>
         )}
@@ -106,13 +120,14 @@ export function Layout({
         {/* Mobile bottom nav */}
         <nav className="md:hidden sticky bottom-0 z-40 bg-white border-t border-gray-100 safe-area-bottom">
           <div className="flex h-16">
-            <NavItem to="/" icon={<Home size={22} />} label="Groups" active={location.pathname === '/'} />
+            <NavItem to="/" icon={<Home size={22} />} label="Dashboard" active={location.pathname === '/'} />
             <NavItem
               to="/notifications"
               icon={<Bell size={22} />}
               label="Activity"
               active={location.pathname === '/notifications'}
             />
+
             <NavItem
               to="/settings"
               icon={<Settings size={22} />}

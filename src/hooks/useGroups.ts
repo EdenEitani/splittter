@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Group, GroupMember, GroupType, Profile } from '@/types'
+import type { Group, GroupMember, GroupType, GroupWithMembers, Profile } from '@/types'
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
 
@@ -20,12 +20,17 @@ export function useGroups() {
         .from('groups')
         .select(`
           *,
-          group_members!inner(user_id)
+          members:group_members(
+            user_id,
+            role,
+            joined_at,
+            profile:profiles(id, display_name, avatar_url, is_guest)
+          )
         `)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data as Group[]
+      return data as unknown as GroupWithMembers[]
     },
     staleTime: 1000 * 30,
   })

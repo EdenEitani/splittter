@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Users, Plane, Home, Calendar, Building2, Sparkles, ChevronRight } from 'lucide-react'
-import type { Group } from '@/types'
+import { Plane, Home, Calendar, Building2, Sparkles, Users } from 'lucide-react'
+import { clsx } from 'clsx'
+import type { GroupWithMembers, Profile } from '@/types'
+import { formatMoney } from '@/lib/money'
 
 const GROUP_ICONS = {
   trip: Plane,
@@ -10,99 +12,123 @@ const GROUP_ICONS = {
   custom: Sparkles,
 }
 
-const GROUP_COLORS = {
+const GROUP_ICON_COLORS = {
   trip: 'bg-sky-100 text-sky-600',
-  house: 'bg-green-100 text-green-600',
+  house: 'bg-emerald-100 text-emerald-600',
   event: 'bg-violet-100 text-violet-600',
   roommates: 'bg-amber-100 text-amber-600',
-  custom: 'bg-gray-100 text-gray-600',
+  custom: 'bg-blue-100 text-blue-600',
 }
 
-const GROUP_BG_ACCENT = {
-  trip: 'from-sky-50 to-white',
-  house: 'from-green-50 to-white',
-  event: 'from-violet-50 to-white',
-  roommates: 'from-amber-50 to-white',
-  custom: 'from-gray-50 to-white',
-}
+const AVATAR_COLORS = [
+  'bg-violet-400',
+  'bg-blue-500',
+  'bg-pink-500',
+  'bg-amber-400',
+  'bg-emerald-500',
+  'bg-sky-500',
+  'bg-rose-500',
+  'bg-teal-500',
+]
 
 interface GroupCardProps {
-  group: Group
-  memberCount?: number
+  group: GroupWithMembers
   netBalance?: number
   currency?: string
 }
 
-export function GroupCard({
-  group,
-  memberCount,
-  netBalance,
-  currency,
-}: GroupCardProps) {
-  const Icon = GROUP_ICONS[group.type] ?? Users
-  const colorClass = GROUP_COLORS[group.type] ?? GROUP_COLORS.custom
-  const bgAccent = GROUP_BG_ACCENT[group.type] ?? GROUP_BG_ACCENT.custom
+function MemberAvatars({ profiles }: { profiles: Profile[] }) {
+  const shown = profiles.slice(0, 4)
+  const extra = profiles.length - 4
+  return (
+    <div className="flex -space-x-2">
+      {shown.map((p, i) => (
+        <div
+          key={p.id ?? i}
+          className={clsx(
+            'w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
+            AVATAR_COLORS[i % AVATAR_COLORS.length]
+          )}
+          title={p.display_name}
+        >
+          {p.display_name.slice(0, 2).toUpperCase()}
+        </div>
+      ))}
+      {extra > 0 && (
+        <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500">
+          +{extra}
+        </div>
+      )}
+    </div>
+  )
+}
 
-  const formatBalance = (amount: number, cur: string) => {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: cur,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(Math.abs(amount / 100))
-    } catch {
-      return `${Math.abs(amount)} ${cur}`
-    }
-  }
+export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
+  const Icon = GROUP_ICONS[group.type] ?? Users
+  const iconColor = GROUP_ICON_COLORS[group.type] ?? GROUP_ICON_COLORS.custom
+
+  const members = group.members ?? []
+  const profiles = members.map(m => m.profile).filter(Boolean) as Profile[]
 
   const showBalance = netBalance !== undefined && currency
+  const isOwed = (netBalance ?? 0) > 0
+  const isOwe = (netBalance ?? 0) < 0
+  const isSettled = netBalance === 0
 
   return (
     <Link
       to={`/group/${group.id}`}
-      className={`block bg-gradient-to-r ${bgAccent} rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 overflow-hidden`}
+      className="block bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 p-5"
     >
-      <div className="flex items-center gap-3 p-4">
-        {/* Icon */}
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorClass}`}>
-          <Icon size={20} />
+      {/* Icon + status badge */}
+      <div className="flex items-start justify-between mb-3">
+        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0', iconColor)}>
+          <Icon size={22} />
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 truncate">{group.name}</h3>
-          <p className="text-sm text-gray-400 capitalize mt-0.5">
-            {group.type}{memberCount ? ` · ${memberCount} members` : ''}
-          </p>
-        </div>
-
-        {/* Balance + chevron */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {showBalance && (
-            <div className="text-right">
-              {netBalance === 0 ? (
-                <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Settled</span>
-              ) : netBalance! > 0 ? (
-                <div>
-                  <div className="text-[10px] text-gray-400 leading-tight">owed to you</div>
-                  <div className="text-sm font-bold text-green-600">
-                    +{formatBalance(netBalance!, currency!)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="text-[10px] text-gray-400 leading-tight">you owe</div>
-                  <div className="text-sm font-bold text-red-500">
-                    {formatBalance(netBalance!, currency!)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <ChevronRight size={16} className="text-gray-300" />
-        </div>
+        {showBalance && (
+          <span
+            className={clsx(
+              'text-xs font-semibold px-2.5 py-1 rounded-full',
+              isOwed && 'bg-emerald-100 text-emerald-700',
+              isOwe && 'bg-red-100 text-red-600',
+              isSettled && 'bg-gray-100 text-gray-500',
+            )}
+          >
+            {isOwed ? "You're owed" : isOwe ? 'You owe' : 'Settled up'}
+          </span>
+        )}
       </div>
+
+      {/* Name + member count */}
+      <h3 className="font-bold text-gray-900 text-base leading-tight mb-0.5">{group.name}</h3>
+      <p className="text-xs text-gray-400 mb-4">
+        {members.length} member{members.length !== 1 ? 's' : ''}
+      </p>
+
+      {/* Balance row */}
+      {showBalance && (
+        <div className="flex items-end justify-between mb-4">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
+              Your balance
+            </p>
+            <p
+              className={clsx(
+                'text-2xl font-bold',
+                isOwed ? 'text-emerald-500' : isOwe ? 'text-red-500' : 'text-gray-400',
+              )}
+            >
+              {netBalance === 0
+                ? '—'
+                : `${isOwed ? '+' : '-'}${formatMoney(Math.abs(netBalance!), currency!)}`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Avatars */}
+      {profiles.length > 0 && <MemberAvatars profiles={profiles} />}
     </Link>
   )
 }
