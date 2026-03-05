@@ -363,6 +363,25 @@ export function AddExpensePage() {
                 ))}
               </div>
 
+              {/* Equal split breakdown */}
+              {form.split_method === 'equal' && form.participant_ids.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {form.participant_ids.map(uid => {
+                    const p = profiles.find(pr => pr.id === uid)
+                    const total = parseFloat(form.original_amount || '0')
+                    const share = form.participant_ids.length > 0 ? total / form.participant_ids.length : 0
+                    return (
+                      <div key={uid} className="flex items-center justify-between py-0.5">
+                        <span className="text-sm text-gray-600">{p?.display_name.split(' ')[0] ?? uid}</span>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {share > 0 ? `${form.original_currency} ${share.toFixed(2)}` : '—'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* Custom amounts */}
               {form.split_method === 'custom_amounts' && (
                 <div className="mt-3 space-y-2">
@@ -421,6 +440,16 @@ export function AddExpensePage() {
                             max="100"
                           />
                           <span className="text-sm text-gray-400">%</span>
+                          {(() => {
+                            const pct = parseFloat(form.custom_percents[uid] || '0')
+                            const total = parseFloat(form.original_amount || '0')
+                            const computed = (pct / 100) * total
+                            return computed > 0 ? (
+                              <span className="text-xs text-gray-400 w-16 text-right">
+                                {form.original_currency} {computed.toFixed(2)}
+                              </span>
+                            ) : null
+                          })()}
                         </div>
                       </div>
                     )

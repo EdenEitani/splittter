@@ -72,7 +72,7 @@ export function Layout({
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
         {/* Mobile header */}
         {(title || showBack) && (
-          <header className="md:hidden sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
+          <header className="md:hidden sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="flex items-center h-14 px-4 gap-2">
               {showBack && (
                 backTo ? (

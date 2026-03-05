@@ -43,6 +43,16 @@ export function AddPaymentPage() {
     }
   }, [group, user])
 
+  // Auto-select receiver when group has exactly 2 members
+  useEffect(() => {
+    if (profiles.length === 2 && form.from_user_id) {
+      const other = profiles.find(p => p.id !== form.from_user_id)
+      if (other) {
+        setForm(f => ({ ...f, to_user_id: other.id }))
+      }
+    }
+  }, [profiles.length, form.from_user_id])
+
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   function validate(): boolean {
