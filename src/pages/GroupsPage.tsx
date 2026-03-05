@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Upload, ChevronDown, ChevronRight } from 'lucide-react'
 import { useGroups, useUserGroupsBalance } from '@/hooks/useGroups'
 import { usePeopleBalances } from '@/hooks/useBalances'
 import { GroupCard } from '@/components/GroupCard'
@@ -41,6 +41,7 @@ export function GroupsPage() {
   const oweGroups = Object.values(balanceMap ?? {}).filter(b => b.net < 0).length
 
   const hasGroups = !isLoading && (groups?.length ?? 0) > 0
+  const [balanceOpen, setBalanceOpen] = useState(false)
 
   return (
     <Layout
@@ -77,74 +78,105 @@ export function GroupsPage() {
         </div>
       }
     >
-      {/* ── Balance summary cards ─────────────────────────────── */}
+      {/* ── Balance summary (collapsible) ────────────────────── */}
       {hasGroups && (
-        <div className="mb-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* You are owed */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="h-1 bg-emerald-400" />
-            <div className="p-5">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                You are owed
-              </p>
-              <p className="text-2xl font-bold text-emerald-500">
-                {totalOwed > 0 ? formatMoney(totalOwed, summCurrency) : '—'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {owedGroups > 0
-                  ? `across ${owedGroups} group${owedGroups !== 1 ? 's' : ''}`
-                  : 'nothing owed yet'}
-              </p>
-            </div>
-          </div>
+        <div className="mb-5 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Header / toggle row */}
+          <button
+            type="button"
+            onClick={() => setBalanceOpen(o => !o)}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left"
+          >
+            {balanceOpen
+              ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+              : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />
+            }
+            <span className="text-sm font-semibold text-gray-700">Balance</span>
 
-          {/* You owe */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="h-1 bg-rose-400" />
-            <div className="p-5">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                You owe
-              </p>
-              <p className="text-2xl font-bold text-rose-500">
-                {totalOwe > 0 ? formatMoney(totalOwe, summCurrency) : '—'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {oweGroups > 0
-                  ? `across ${oweGroups} group${oweGroups !== 1 ? 's' : ''}`
-                  : 'nothing to pay'}
-              </p>
-            </div>
-          </div>
+            {/* Collapsed summary pills */}
+            {!balanceOpen && (
+              <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+                {totalOwed > 0 && (
+                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                    ↑ {formatMoney(totalOwed, summCurrency)}
+                  </span>
+                )}
+                {totalOwe > 0 && (
+                  <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2.5 py-1 rounded-full">
+                    ↓ {formatMoney(totalOwe, summCurrency)}
+                  </span>
+                )}
+                {totalOwe === 0 && totalOwed === 0 && (
+                  <span className="text-xs text-gray-400">all settled up</span>
+                )}
+              </div>
+            )}
+          </button>
 
-          {/* Net balance */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className={`h-1 ${net >= 0 ? 'bg-blue-400' : 'bg-orange-400'}`} />
-            <div className="p-5">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                Net balance
-              </p>
-              <p
-                className={`text-2xl font-bold ${
-                  net > 0
-                    ? 'text-blue-500'
-                    : net < 0
-                      ? 'text-orange-500'
-                      : 'text-gray-400'
-                }`}
-              >
-                {totalOwe > 0 || totalOwed > 0
-                  ? `${net >= 0 ? '+' : ''}${formatMoney(Math.abs(net), summCurrency)}`
-                  : '—'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {net > 0
-                  ? "you're in good shape 🎉"
-                  : net < 0
-                    ? 'you owe overall'
-                    : 'all settled up ✨'}
-              </p>
+          {/* Expanded cards */}
+          {balanceOpen && (
+            <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-gray-50">
+              {/* You are owed */}
+              <div className="bg-gray-50 rounded-xl overflow-hidden mt-3">
+                <div className="h-0.5 bg-emerald-400" />
+                <div className="p-4">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    You are owed
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-500">
+                    {totalOwed > 0 ? formatMoney(totalOwed, summCurrency) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {owedGroups > 0
+                      ? `across ${owedGroups} group${owedGroups !== 1 ? 's' : ''}`
+                      : 'nothing owed yet'}
+                  </p>
+                </div>
+              </div>
+
+              {/* You owe */}
+              <div className="bg-gray-50 rounded-xl overflow-hidden mt-3">
+                <div className="h-0.5 bg-rose-400" />
+                <div className="p-4">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    You owe
+                  </p>
+                  <p className="text-2xl font-bold text-rose-500">
+                    {totalOwe > 0 ? formatMoney(totalOwe, summCurrency) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {oweGroups > 0
+                      ? `across ${oweGroups} group${oweGroups !== 1 ? 's' : ''}`
+                      : 'nothing to pay'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Net balance */}
+              <div className="bg-gray-50 rounded-xl overflow-hidden mt-3">
+                <div className={`h-0.5 ${net >= 0 ? 'bg-blue-400' : 'bg-orange-400'}`} />
+                <div className="p-4">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    Net balance
+                  </p>
+                  <p className={`text-2xl font-bold ${
+                    net > 0 ? 'text-blue-500' : net < 0 ? 'text-orange-500' : 'text-gray-400'
+                  }`}>
+                    {totalOwe > 0 || totalOwed > 0
+                      ? `${net >= 0 ? '+' : ''}${formatMoney(Math.abs(net), summCurrency)}`
+                      : '—'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {net > 0
+                      ? "you're in good shape 🎉"
+                      : net < 0
+                        ? 'you owe overall'
+                        : 'all settled up ✨'}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
