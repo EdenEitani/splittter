@@ -138,6 +138,38 @@ export function AddExpensePage() {
     }))
   }
 
+  function handleSplitMethodChange(method: SplitMethod) {
+    const total = parseFloat(form.original_amount || '0')
+    const n = form.participant_ids.length
+    let newAmounts = form.custom_amounts
+    let newPercents = form.custom_percents
+
+    if (method === 'custom_amounts' && n > 0) {
+      const equal = total / n
+      const amounts: Record<string, string> = {}
+      form.participant_ids.forEach(id => { amounts[id] = equal.toFixed(2) })
+      // Fix last to absorb rounding
+      const lastId = form.participant_ids[n - 1]
+      const nonLastSum = form.participant_ids.slice(0, -1)
+        .reduce((s, id) => s + parseFloat(amounts[id] || '0'), 0)
+      amounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
+      newAmounts = amounts
+    }
+
+    if (method === 'percent' && n > 0) {
+      const equalPct = 100 / n
+      const percents: Record<string, string> = {}
+      form.participant_ids.forEach(id => { percents[id] = equalPct.toFixed(1) })
+      const lastId = form.participant_ids[n - 1]
+      const nonLastSum = form.participant_ids.slice(0, -1)
+        .reduce((s, id) => s + parseFloat(percents[id] || '0'), 0)
+      percents[lastId] = Math.max(0, 100 - nonLastSum).toFixed(1)
+      newPercents = percents
+    }
+
+    setForm(f => ({ ...f, split_method: method, custom_amounts: newAmounts, custom_percents: newPercents }))
+  }
+
   function validate(): boolean {
     const e: Record<string, string> = {}
     if (!form.label.trim()) e.label = 'Description is required'
@@ -350,7 +382,7 @@ export function AddExpensePage() {
                   <button
                     key={m.value}
                     type="button"
-                    onClick={() => setForm(f => ({ ...f, split_method: m.value }))}
+                    onClick={() => handleSplitMethodChange(m.value)}
                     className={clsx(
                       'flex-1 py-2 text-xs font-medium rounded-xl border-2 transition-all',
                       form.split_method === m.value
@@ -385,26 +417,45 @@ export function AddExpensePage() {
               {/* Custom amounts */}
               {form.split_method === 'custom_amounts' && (
                 <div className="mt-3 space-y-2">
-                  {form.participant_ids.map(uid => {
+                  {form.participant_ids.map((uid, i) => {
                     const p = profiles.find(pr => pr.id === uid)
+                    const isLast = i === form.participant_ids.length - 1
                     return (
                       <div key={uid} className="flex items-center gap-2">
                         <span className="text-sm text-gray-700 flex-1 truncate">
                           {p?.display_name.split(' ')[0] ?? uid}
                         </span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={form.custom_amounts[uid] ?? ''}
-                          onChange={e => setForm(f => ({
-                            ...f,
-                            custom_amounts: { ...f.custom_amounts, [uid]: e.target.value },
-                          }))}
-                          className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
-                          step="0.01"
-                          min="0"
-                        />
+                        {isLast ? (
+                          <div className="w-24 h-9 flex items-center justify-end px-2 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-sm text-gray-500 font-medium">
+                            {form.custom_amounts[uid] || '0.00'}
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={form.custom_amounts[uid] ?? ''}
+                            onChange={e => {
+                              const newAmounts = { ...form.custom_amounts, [uid]: e.target.value }
+                              const total = parseFloat(form.original_amount || '0')
+                              const lastId = form.participant_ids[form.participant_ids.length - 1]
+                              const nonLastSum = form.participant_ids.slice(0, -1)
+                                .reduce((sum, id) => sum + parseFloat(newAmounts[id] || '0'), 0)
+                              newAmounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
+                              setForm(f => ({ ...f, custom_amounts: newAmounts }))
+                            }}
+                            className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            step="0.01"
+                            min="0"
+                            max={(() => {
+                              const total = parseFloat(form.original_amount || '0')
+                              const othersSum = form.participant_ids
+                                .filter((id, idx) => id !== uid && idx !== form.participant_ids.length - 1)
+                                .reduce((sum, id) => sum + parseFloat(form.custom_amounts[id] || '0'), 0)
+                              return Math.max(0, total - othersSum).toFixed(2)
+                            })()}
+                          />
+                        )}
                       </div>
                     )
                   })}
@@ -417,39 +468,53 @@ export function AddExpensePage() {
               {/* Custom percents */}
               {form.split_method === 'percent' && (
                 <div className="mt-3 space-y-2">
-                  {form.participant_ids.map(uid => {
+                  {form.participant_ids.map((uid, i) => {
                     const p = profiles.find(pr => pr.id === uid)
+                    const isLast = i === form.participant_ids.length - 1
+                    const pct = parseFloat(form.custom_percents[uid] || '0')
+                    const total = parseFloat(form.original_amount || '0')
+                    const computed = (pct / 100) * total
                     return (
                       <div key={uid} className="flex items-center gap-2">
                         <span className="text-sm text-gray-700 flex-1 truncate">
                           {p?.display_name.split(' ')[0] ?? uid}
                         </span>
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={form.custom_percents[uid] ?? ''}
-                            onChange={e => setForm(f => ({
-                              ...f,
-                              custom_percents: { ...f.custom_percents, [uid]: e.target.value },
-                            }))}
-                            className="w-16 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
-                            step="1"
-                            min="0"
-                            max="100"
-                          />
+                          {isLast ? (
+                            <div className="w-16 h-9 flex items-center justify-end px-2 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-sm text-gray-500 font-medium">
+                              {form.custom_percents[uid] || '0'}
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={form.custom_percents[uid] ?? ''}
+                              onChange={e => {
+                                const newPercents = { ...form.custom_percents, [uid]: e.target.value }
+                                const lastId = form.participant_ids[form.participant_ids.length - 1]
+                                const nonLastSum = form.participant_ids.slice(0, -1)
+                                  .reduce((sum, id) => sum + parseFloat(newPercents[id] || '0'), 0)
+                                newPercents[lastId] = Math.max(0, 100 - nonLastSum).toFixed(1)
+                                setForm(f => ({ ...f, custom_percents: newPercents }))
+                              }}
+                              className="w-16 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                              step="1"
+                              min="0"
+                              max={(() => {
+                                const otherPctSum = form.participant_ids
+                                  .filter((id, idx) => id !== uid && idx !== form.participant_ids.length - 1)
+                                  .reduce((sum, id) => sum + parseFloat(form.custom_percents[id] || '0'), 0)
+                                return Math.max(0, 100 - otherPctSum)
+                              })()}
+                            />
+                          )}
                           <span className="text-sm text-gray-400">%</span>
-                          {(() => {
-                            const pct = parseFloat(form.custom_percents[uid] || '0')
-                            const total = parseFloat(form.original_amount || '0')
-                            const computed = (pct / 100) * total
-                            return computed > 0 ? (
-                              <span className="text-xs text-gray-400 w-16 text-right">
-                                {form.original_currency} {computed.toFixed(2)}
-                              </span>
-                            ) : null
-                          })()}
+                          {computed > 0 && (
+                            <span className="text-xs text-gray-400 w-16 text-right">
+                              {form.original_currency} {computed.toFixed(2)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )
