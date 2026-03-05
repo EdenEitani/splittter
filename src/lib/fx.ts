@@ -7,57 +7,83 @@ export function todayISO(): string {
 
 /**
  * Ensure today's rates for `baseCurrency` exist in the DB.
- * Fetches from the edge function at most once per day — if the row already
- * exists the edge function returns early without re-fetching.
- * Call this before the first expense/payment of the day.
+ * Always also ensures USD rates are stored — USD acts as the universal
+ * cross-rate base so any currency pair can be resolved from a single fetch.
+ *
+ * The edge function is idempotent: if rates already exist it returns early.
  */
 export async function ensureDailyRates(baseCurrency: string): Promise<void> {
   const date = todayISO()
+  const upper = baseCurrency.toUpperCase()
 
-  // Check if we already have today's rates locally before hitting the edge function
-  const { data } = await supabase
-    .from('fx_rates')
-    .select('id')
-    .eq('base_currency', baseCurrency.toUpperCase())
-    .eq('date', date)
-    .maybeSingle()
+  // Fetch needed currencies in parallel: the requested one + USD (universal base)
+  const currenciesToEnsure = upper === 'USD' ? ['USD'] : [upper, 'USD']
 
-  if (data) return // Already fetched today
+  await Promise.all(
+    currenciesToEnsure.map(async (currency) => {
+      const { data } = await supabase
+        .from('fx_rates')
+        .select('id')
+        .eq('base_currency', currency)
+        .eq('date', date)
+        .maybeSingle()
 
-  // Fetch fresh rates (edge function is also idempotent on its side)
-  await supabase.functions.invoke('fx-refresh-daily-rates', {
-    body: { base_currency: baseCurrency.toUpperCase(), date },
-  })
+      if (data) return // Already have today's rates
+
+      await supabase.functions.invoke('fx-refresh-daily-rates', {
+        body: { base_currency: currency, date },
+      })
+    })
+  )
 }
 
 /**
  * Look up a stored exchange rate from the DB.
- * Returns null if no rate found — call ensureDailyRates first.
+ * Priority:
+ *   1. Direct: base=from, rates[to]
+ *   2. Inverse: base=to, rates[from]  → 1/rate
+ *   3. Cross-rate via USD: (USD→to) / (USD→from)
  */
 async function lookupRate(from: string, to: string, date: string): Promise<number | null> {
-  const { data } = await supabase
+  // 1. Direct lookup
+  const { data: direct } = await supabase
     .from('fx_rates')
     .select('rates_json')
-    .eq('base_currency', from.toUpperCase())
+    .eq('base_currency', from)
     .eq('date', date)
     .maybeSingle()
 
-  if (data?.rates_json) {
-    const rate = (data.rates_json as Record<string, number>)[to.toUpperCase()]
+  if (direct?.rates_json) {
+    const rate = (direct.rates_json as Record<string, number>)[to]
     if (rate) return rate
   }
 
-  // Try inverse
+  // 2. Inverse lookup
   const { data: inv } = await supabase
     .from('fx_rates')
     .select('rates_json')
-    .eq('base_currency', to.toUpperCase())
+    .eq('base_currency', to)
     .eq('date', date)
     .maybeSingle()
 
   if (inv?.rates_json) {
-    const inverseRate = (inv.rates_json as Record<string, number>)[from.toUpperCase()]
+    const inverseRate = (inv.rates_json as Record<string, number>)[from]
     if (inverseRate) return 1 / inverseRate
+  }
+
+  // 3. Cross-rate via USD (from→USD→to)
+  const { data: usdRow } = await supabase
+    .from('fx_rates')
+    .select('rates_json')
+    .eq('base_currency', 'USD')
+    .eq('date', date)
+    .maybeSingle()
+
+  if (usdRow?.rates_json) {
+    const usd = usdRow.rates_json as Record<string, number>
+    const fromRate = usd[from] // USD → from
+    const toRate = usd[to]     // USD → to
+    if (fromRate && toRate) return toRate / fromRate
   }
 
   return null
@@ -65,7 +91,7 @@ async function lookupRate(from: string, to: string, date: string): Promise<numbe
 
 /**
  * Get the exchange rate for fromCurrency → toCurrency on a given date.
- * Assumes ensureDailyRates has already been called for the relevant base currency.
+ * Call ensureDailyRates first so the rates exist in the DB.
  */
 export async function getFxRate(
   fromCurrency: string,
@@ -74,7 +100,7 @@ export async function getFxRate(
 ): Promise<number> {
   if (fromCurrency === toCurrency) return 1
 
-  const rate = await lookupRate(fromCurrency, toCurrency, date)
+  const rate = await lookupRate(fromCurrency.toUpperCase(), toCurrency.toUpperCase(), date)
   if (rate !== null) return rate
 
   console.warn(`[fx] No rate found for ${fromCurrency}→${toCurrency} on ${date}, using 1`)

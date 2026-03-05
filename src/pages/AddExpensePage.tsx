@@ -11,10 +11,10 @@ import { useCategories } from '@/hooks/useCategories'
 import { useCreateExpense, useUpdateExpense, useExpenses } from '@/hooks/useExpenses'
 import { useCategorize } from '@/hooks/useCategorize'
 import { useAuth } from '@/hooks/useAuth'
-import { COMMON_CURRENCIES, fromMinorUnits } from '@/lib/money'
+import { COMMON_CURRENCIES, fromMinorUnits, formatMoney, toMinorUnits } from '@/lib/money'
 import { clsx } from 'clsx'
 import type { ExpenseFormData, SplitMethod } from '@/types'
-import { todayISO } from '@/lib/fx'
+import { todayISO, ensureDailyRates, getFxRate } from '@/lib/fx'
 
 const SPLIT_METHODS: { value: SplitMethod; label: string; desc: string }[] = [
   { value: 'equal', label: 'Equal', desc: 'Divide equally' },
@@ -96,6 +96,37 @@ export function AddExpensePage() {
   const [showCurrencies, setShowCurrencies] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [manualCategory, setManualCategory] = useState(false)
+
+  // ─── Live FX preview ──────────────────────────────────────────────────────
+  const [fxRate, setFxRate] = useState<number | null>(null)
+  const [fxLoading, setFxLoading] = useState(false)
+
+  useEffect(() => {
+    const groupCurrency = group?.base_currency
+    if (!groupCurrency || form.original_currency === groupCurrency) {
+      setFxRate(null)
+      return
+    }
+
+    let cancelled = false
+    setFxLoading(true)
+    setFxRate(null)
+
+    ;(async () => {
+      try {
+        // Fetch today's rates for this currency (+ USD as universal base)
+        await ensureDailyRates(form.original_currency)
+        const rate = await getFxRate(form.original_currency, groupCurrency, todayISO())
+        if (!cancelled) setFxRate(rate)
+      } catch {
+        // silently ignore — UI will just not show the preview
+      } finally {
+        if (!cancelled) setFxLoading(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [form.original_currency, group?.base_currency])
 
   // ─── LLM Categorization ─────────────────────────────────────────────────────
   const { result: llmResult, loading: llmLoading } = useCategorize(
@@ -286,11 +317,36 @@ export function AddExpensePage() {
             </div>
           )}
 
-          {/* FX note */}
+          {/* FX live preview */}
           {form.original_currency !== groupCurrencySymbol && (
-            <p className="text-xs text-blue-600 mt-2">
-              Will be converted to {groupCurrencySymbol} at today's rate
-            </p>
+            <div className="mt-2">
+              {fxLoading && (
+                <p className="text-xs text-blue-400 animate-pulse">Fetching exchange rate…</p>
+              )}
+              {!fxLoading && fxRate !== null && (() => {
+                const hasAmount = !!form.original_amount && parseFloat(form.original_amount) > 0
+                const convertedMinor = hasAmount
+                  ? Math.round(toMinorUnits(form.original_amount, form.original_currency) * fxRate)
+                  : null
+                return (
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    {convertedMinor !== null && (
+                      <p className="text-base font-semibold text-blue-600">
+                        ≈ {formatMoney(convertedMinor, groupCurrencySymbol)}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      1 {form.original_currency} = {fxRate.toFixed(4)} {groupCurrencySymbol}
+                    </p>
+                  </div>
+                )
+              })()}
+              {!fxLoading && fxRate === null && (
+                <p className="text-xs text-gray-400">
+                  Will be converted to {groupCurrencySymbol} at today's rate
+                </p>
+              )}
+            </div>
           )}
         </div>
 
