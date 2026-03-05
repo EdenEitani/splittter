@@ -114,8 +114,9 @@ export function AddExpensePage() {
 
     ;(async () => {
       try {
-        // Fetch today's rates for this currency (+ USD as universal base)
-        await ensureDailyRates(form.original_currency)
+        // Fetch today's rates using the group's base currency as the base.
+        // ILS-based rates include all currencies, so GBP→ILS is an inverse lookup.
+        await ensureDailyRates(groupCurrency)
         const rate = await getFxRate(form.original_currency, groupCurrency, todayISO())
         if (!cancelled) setFxRate(rate)
       } catch {

@@ -6,17 +6,18 @@ export function todayISO(): string {
 }
 
 /**
- * Ensure today's rates for `baseCurrency` exist in the DB.
- * Always also ensures USD rates are stored — USD acts as the universal
- * cross-rate base so any currency pair can be resolved from a single fetch.
+ * Ensure today's rates for the group's base currency (and USD as cross-rate
+ * fallback) exist in the DB.
  *
- * The edge function is idempotent: if rates already exist it returns early.
+ * Pass the GROUP's base currency (e.g. 'ILS'), not the expense currency.
+ * This stores ILS-based rates, so any expense currency → ILS conversion is
+ * available via the inverse lookup (rates_json['GBP'] = 0.243 → 1/0.243 ≈ 4.11).
  */
-export async function ensureDailyRates(baseCurrency: string): Promise<void> {
+export async function ensureDailyRates(groupCurrency: string): Promise<void> {
   const date = todayISO()
-  const upper = baseCurrency.toUpperCase()
+  const upper = groupCurrency.toUpperCase()
 
-  // Fetch needed currencies in parallel: the requested one + USD (universal base)
+  // Always also ensure USD — universal cross-rate base for exotic currencies
   const currenciesToEnsure = upper === 'USD' ? ['USD'] : [upper, 'USD']
 
   await Promise.all(
@@ -30,9 +31,10 @@ export async function ensureDailyRates(baseCurrency: string): Promise<void> {
 
       if (data) return // Already have today's rates
 
-      await supabase.functions.invoke('fx-refresh-daily-rates', {
+      const { error } = await supabase.functions.invoke('fx-refresh-daily-rates', {
         body: { base_currency: currency, date },
       })
+      if (error) console.error(`[fx] Failed to fetch rates for ${currency}:`, error)
     })
   )
 }

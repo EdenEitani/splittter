@@ -1,8 +1,12 @@
 // Supabase Edge Function: fx-refresh-daily-rates
-// Fetches exchange rates from open.er-api.com and stores in fx_rates table.
+// Fetches exchange rates from exchangerate-api.com (with key) or open.er-api.com (free fallback).
 //
-// Request body: { base_currency: string, date?: string }
-// Can be called manually (via the app) or by a scheduled job / GitHub Action.
+// Request body: { base_currency?: string, date?: string }
+// Default base_currency: ILS
+//
+// Auth (when FX_REFRESH_SECRET is set):
+//   - GitHub Actions:  Authorization: Bearer <FX_REFRESH_SECRET>
+//   - Browser client:  apikey: <SUPABASE_ANON_KEY>  (added automatically by supabase-js)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -20,8 +24,30 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Allow GET (scheduled trigger) or POST (manual)
-  let baseCurrency = 'USD'
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  // FX_REFRESH_SECRET protects against external API quota abuse.
+  // Two valid callers:
+  //   1. GitHub Actions → sends secret as Bearer token
+  //   2. Browser via supabase-js → sends apikey header = SUPABASE_ANON_KEY
+  const secret = Deno.env.get('FX_REFRESH_SECRET')
+  if (secret) {
+    const authHeader = req.headers.get('authorization') ?? ''
+    const apiKeyHeader = req.headers.get('apikey') ?? ''
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+    const hasSecret = authHeader.includes(secret)
+    const isSupabaseClient = !!supabaseAnonKey && apiKeyHeader === supabaseAnonKey
+
+    if (!hasSecret && !isSupabaseClient) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+  }
+
+  // ── Parse request ─────────────────────────────────────────────────────────
+  let baseCurrency = 'ILS'  // default: group base currency for Splittter
   let date = todayISO()
 
   if (req.method === 'POST') {
@@ -30,22 +56,7 @@ Deno.serve(async (req: Request) => {
       if (body.base_currency) baseCurrency = body.base_currency.toUpperCase()
       if (body.date) date = body.date
     } catch {
-      // ignore parse errors for GET requests
-    }
-  }
-
-  const secret = Deno.env.get('FX_REFRESH_SECRET')
-  const authHeader = req.headers.get('authorization') ?? ''
-
-  // If a secret is configured, validate it
-  if (secret && !authHeader.includes(secret)) {
-    // Allow requests from same Supabase project (using anon key bearer)
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    if (!authHeader.includes(supabaseAnonKey)) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      // ignore parse errors
     }
   }
 
@@ -53,7 +64,7 @@ Deno.serve(async (req: Request) => {
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseKey)
 
-  // Check if we already have rates for today
+  // ── Idempotency check ─────────────────────────────────────────────────────
   const { data: existing } = await supabase
     .from('fx_rates')
     .select('id')
@@ -68,54 +79,55 @@ Deno.serve(async (req: Request) => {
     )
   }
 
-  // Fetch from open.er-api.com (free, no key required for basic usage)
-  const fxApiKey = Deno.env.get('FX_API_KEY') // optional paid key for higher limits
-  const apiUrl = fxApiKey
-    ? `https://v6.exchangerate-api.com/v6/${fxApiKey}/latest/${baseCurrency}`
-    : `https://open.er-api.com/v6/latest/${baseCurrency}`
-
-  let rates: Record<string, number>
+  // ── Fetch rates: paid API first, free API as fallback ─────────────────────
+  const fxApiKey = Deno.env.get('FX_API_KEY')
+  let rates: Record<string, number> = {}
   let provider = 'open.er-api.com'
 
-  try {
-    const res = await fetch(apiUrl, {
-      signal: AbortSignal.timeout(10000),
-    })
-
-    if (!res.ok) {
-      throw new Error(`FX API returned ${res.status}`)
+  if (fxApiKey) {
+    try {
+      const res = await fetch(
+        `https://v6.exchangerate-api.com/v6/${fxApiKey}/latest/${baseCurrency}`,
+        { signal: AbortSignal.timeout(10000) }
+      )
+      if (!res.ok) throw new Error(`exchangerate-api returned ${res.status}`)
+      const data = await res.json() as { conversion_rates?: Record<string, number> }
+      const fetched = data.conversion_rates ?? {}
+      if (Object.keys(fetched).length === 0) throw new Error('Empty rates from exchangerate-api')
+      rates = fetched
+      provider = 'exchangerate-api.com'
+      console.log(`[fx-refresh] Got ${Object.keys(rates).length} rates from exchangerate-api.com`)
+    } catch (err) {
+      console.warn('[fx-refresh] exchangerate-api.com failed, trying open.er-api.com:', (err as Error).message)
     }
-
-    const data = await res.json() as {
-      result?: string
-      rates?: Record<string, number>
-      conversion_rates?: Record<string, number>
-    }
-
-    rates = data.rates ?? data.conversion_rates ?? {}
-    if (fxApiKey) provider = 'exchangerate-api.com'
-
-    if (Object.keys(rates).length === 0) {
-      throw new Error('Empty rates returned from FX API')
-    }
-  } catch (err) {
-    console.error('[fx-refresh] FX API call failed:', err)
-    return new Response(
-      JSON.stringify({ error: `FX API error: ${(err as Error).message}` }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
   }
 
-  // Upsert into fx_rates
+  if (Object.keys(rates).length === 0) {
+    try {
+      const res = await fetch(
+        `https://open.er-api.com/v6/latest/${baseCurrency}`,
+        { signal: AbortSignal.timeout(10000) }
+      )
+      if (!res.ok) throw new Error(`open.er-api returned ${res.status}`)
+      const data = await res.json() as { rates?: Record<string, number>; conversion_rates?: Record<string, number> }
+      rates = data.rates ?? data.conversion_rates ?? {}
+      if (Object.keys(rates).length === 0) throw new Error('Empty rates from open.er-api.com')
+      provider = 'open.er-api.com'
+      console.log(`[fx-refresh] Got ${Object.keys(rates).length} rates from open.er-api.com`)
+    } catch (err) {
+      console.error('[fx-refresh] Both FX APIs failed:', (err as Error).message)
+      return new Response(
+        JSON.stringify({ error: `FX API error: ${(err as Error).message}` }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+  }
+
+  // ── Persist all rates ─────────────────────────────────────────────────────
   const { error: dbError } = await supabase
     .from('fx_rates')
     .upsert(
-      {
-        base_currency: baseCurrency,
-        date,
-        rates_json: rates,
-        provider,
-      },
+      { base_currency: baseCurrency, date, rates_json: rates, provider },
       { onConflict: 'base_currency,date' }
     )
 
@@ -127,15 +139,15 @@ Deno.serve(async (req: Request) => {
     )
   }
 
-  const currencyCount = Object.keys(rates).length
-  console.log(`[fx-refresh] Stored ${currencyCount} rates for ${baseCurrency} on ${date}`)
+  console.log(`[fx-refresh] Stored ${Object.keys(rates).length} rates for ${baseCurrency} on ${date} via ${provider}`)
 
   return new Response(
     JSON.stringify({
-      message: `Stored ${currencyCount} rates for ${baseCurrency} on ${date}.`,
+      message: `Stored ${Object.keys(rates).length} rates for ${baseCurrency} on ${date}.`,
       base_currency: baseCurrency,
       date,
-      currencies: currencyCount,
+      provider,
+      currencies: Object.keys(rates).length,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
