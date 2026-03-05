@@ -19,11 +19,21 @@ export function ExpenseItem({ expense, currentUserId, onDelete, onEdit }: Expens
   const debtors = participants.filter(p => p.role === 'participant' && p.share_amount_group_currency)
 
   const isSameAmount = expense.original_currency === expense.group_currency
-  const canDelete = currentUserId === expense.created_by
+  const isPending = expense.id.startsWith('local_')
+  // Pending expenses are owned locally, always allow delete
+  const canDelete = isPending || currentUserId === expense.created_by
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="h-1 bg-blue-400" />
+      <div className={isPending ? 'h-1 bg-amber-400' : 'h-1 bg-blue-400'} />
+      {isPending && (
+        <div className="px-4 pb-1 pt-2 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">
+            Pending sync
+          </span>
+        </div>
+      )}
       <div className="p-4 flex gap-3 items-start">
         {/* Category icon */}
         <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-xl flex-shrink-0">

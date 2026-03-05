@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { Group, GroupMember, GroupType, GroupWithMembers, Profile } from '@/types'
+import { offlineDb, isOffline } from '@/offline'
 
 // ─── Query Keys ───────────────────────────────────────────────────────────────
 
@@ -15,50 +16,69 @@ export const groupKeys = {
 export function useGroups() {
   return useQuery({
     queryKey: groupKeys.all,
+    networkMode: 'always',
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          members:group_members(
-            user_id,
-            role,
-            joined_at,
-            profile:profiles(id, display_name, avatar_url, is_guest)
-          )
-        `)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      if (!data?.length) return [] as GroupWithMembers[]
-
-      // Fetch the earliest expense date per group (for imported groups whose
-      // created_at is "now" but expenses are from the past)
-      const { data: expDates } = await supabase
-        .from('expenses')
-        .select('group_id, occurred_at')
-        .in('group_id', data.map(g => g.id))
-        .order('occurred_at', { ascending: true })
-
-      // Build min-date map: first row per group (already sorted asc)
-      const minExpDate: Record<string, string> = {}
-      for (const e of expDates ?? []) {
-        if (!minExpDate[e.group_id]) minExpDate[e.group_id] = e.occurred_at
+      if (isOffline()) {
+        const cached = await offlineDb.groups.orderBy('created_at').reverse().toArray()
+        return cached as unknown as GroupWithMembers[]
       }
 
-      // Sort: use min expense date if earlier than created_at (imported groups),
-      // otherwise use created_at. Descending (most recent first).
-      const sorted = [...data].sort((a, b) => {
-        const dA = minExpDate[a.id] && minExpDate[a.id] < a.created_at
-          ? minExpDate[a.id]
-          : a.created_at
-        const dB = minExpDate[b.id] && minExpDate[b.id] < b.created_at
-          ? minExpDate[b.id]
-          : b.created_at
-        return dB.localeCompare(dA)
-      })
+      try {
+        const { data, error } = await supabase
+          .from('groups')
+          .select(`
+            *,
+            members:group_members(
+              user_id,
+              role,
+              joined_at,
+              profile:profiles(id, display_name, avatar_url, is_guest)
+            )
+          `)
+          .order('created_at', { ascending: false })
 
-      return sorted as unknown as GroupWithMembers[]
+        if (error) throw error
+        if (!data?.length) return [] as GroupWithMembers[]
+
+        // Fetch the earliest expense date per group (for imported groups whose
+        // created_at is "now" but expenses are from the past)
+        const { data: expDates } = await supabase
+          .from('expenses')
+          .select('group_id, occurred_at')
+          .in('group_id', data.map(g => g.id))
+          .order('occurred_at', { ascending: true })
+
+        // Build min-date map: first row per group (already sorted asc)
+        const minExpDate: Record<string, string> = {}
+        for (const e of expDates ?? []) {
+          if (!minExpDate[e.group_id]) minExpDate[e.group_id] = e.occurred_at
+        }
+
+        // Sort: use min expense date if earlier than created_at (imported groups),
+        // otherwise use created_at. Descending (most recent first).
+        const sorted = [...data].sort((a, b) => {
+          const dA = minExpDate[a.id] && minExpDate[a.id] < a.created_at
+            ? minExpDate[a.id]
+            : a.created_at
+          const dB = minExpDate[b.id] && minExpDate[b.id] < b.created_at
+            ? minExpDate[b.id]
+            : b.created_at
+          return dB.localeCompare(dA)
+        })
+
+        // Cache groups to IndexedDB (store base Group rows, not the full joins)
+        const groupRows = sorted.map(g => ({
+          id: g.id, name: g.name, type: g.type,
+          base_currency: g.base_currency, emoji: g.emoji ?? null,
+          created_by: g.created_by, created_at: g.created_at,
+        }))
+        await offlineDb.groups.bulkPut(groupRows)
+
+        return sorted as unknown as GroupWithMembers[]
+      } catch {
+        const cached = await offlineDb.groups.orderBy('created_at').reverse().toArray()
+        return cached as unknown as GroupWithMembers[]
+      }
     },
     staleTime: 1000 * 30,
   })
@@ -67,15 +87,28 @@ export function useGroups() {
 export function useGroup(groupId: string) {
   return useQuery({
     queryKey: groupKeys.detail(groupId),
+    networkMode: 'always',
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('id', groupId)
-        .single()
+      if (isOffline()) {
+        const cached = await offlineDb.groups.get(groupId)
+        if (cached) return cached as Group
+      }
 
-      if (error) throw error
-      return data as Group
+      try {
+        const { data, error } = await supabase
+          .from('groups')
+          .select('*')
+          .eq('id', groupId)
+          .single()
+
+        if (error) throw error
+        await offlineDb.groups.put(data)
+        return data as Group
+      } catch {
+        const cached = await offlineDb.groups.get(groupId)
+        if (cached) return cached as Group
+        throw new Error('Group not available offline')
+      }
     },
     enabled: !!groupId,
     staleTime: 1000 * 30,
@@ -85,21 +118,37 @@ export function useGroup(groupId: string) {
 export function useGroupMembers(groupId: string) {
   return useQuery({
     queryKey: groupKeys.members(groupId),
+    networkMode: 'always',
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('group_members')
-        .select(`
-          *,
-          profile:profiles(*)
-        `)
-        .eq('group_id', groupId)
-        .order('joined_at', { ascending: true })
+      if (isOffline()) {
+        const cached = await offlineDb.groupMembers.where('group_id').equals(groupId).toArray()
+        return cached as (GroupMember & { profile: Profile })[]
+      }
 
-      if (error) throw error
-      return (data as (GroupMember & { profile: Profile })[]).map(m => ({
-        ...m,
-        profile: m.profile,
-      }))
+      try {
+        const { data, error } = await supabase
+          .from('group_members')
+          .select(`
+            *,
+            profile:profiles(*)
+          `)
+          .eq('group_id', groupId)
+          .order('joined_at', { ascending: true })
+
+        if (error) throw error
+        const members = (data as (GroupMember & { profile: Profile })[]).map(m => ({
+          ...m,
+          profile: m.profile,
+        }))
+
+        // Cache to IndexedDB
+        await offlineDb.groupMembers.bulkPut(members)
+
+        return members
+      } catch {
+        const cached = await offlineDb.groupMembers.where('group_id').equals(groupId).toArray()
+        return cached as (GroupMember & { profile: Profile })[]
+      }
     },
     enabled: !!groupId,
     staleTime: 1000 * 60,
