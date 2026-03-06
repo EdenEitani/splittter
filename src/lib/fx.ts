@@ -105,8 +105,9 @@ export async function getFxRate(
   const rate = await lookupRate(fromCurrency.toUpperCase(), toCurrency.toUpperCase(), date)
   if (rate !== null) return rate
 
-  console.warn(`[fx] No rate found for ${fromCurrency}→${toCurrency} on ${date}, using 1`)
-  return 1
+  throw new Error(
+    `Exchange rate unavailable for ${fromCurrency}→${toCurrency}. Please check your connection and try again.`
+  )
 }
 
 /** Manually trigger a rates refresh (used by the Settings page button). */

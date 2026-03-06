@@ -24,28 +24,6 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  // FX_REFRESH_SECRET protects against external API quota abuse.
-  // Two valid callers:
-  //   1. GitHub Actions → sends secret as Bearer token
-  //   2. Browser via supabase-js → sends apikey header = SUPABASE_ANON_KEY
-  const secret = Deno.env.get('FX_REFRESH_SECRET')
-  if (secret) {
-    const authHeader = req.headers.get('authorization') ?? ''
-    const apiKeyHeader = req.headers.get('apikey') ?? ''
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-
-    const hasSecret = authHeader.includes(secret)
-    const isSupabaseClient = !!supabaseAnonKey && apiKeyHeader === supabaseAnonKey
-
-    if (!hasSecret && !isSupabaseClient) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-  }
-
   // ── Parse request ─────────────────────────────────────────────────────────
   let baseCurrency = 'ILS'  // default: group base currency for Splittter
   let date = todayISO()

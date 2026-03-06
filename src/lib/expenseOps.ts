@@ -21,7 +21,7 @@ export async function createExpenseInSupabase(
   const originalMinor = toMinorUnits(form.original_amount, form.original_currency)
 
   if (form.original_currency !== groupCurrency) {
-    await ensureDailyRates(form.original_currency)
+    await ensureDailyRates(groupCurrency)
   }
   const fxRate = await getFxRate(form.original_currency, groupCurrency, fxDate)
   const groupMinor = convertAmount(originalMinor, fxRate)

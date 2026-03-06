@@ -100,27 +100,28 @@ export function AddExpensePage() {
   // ─── Live FX preview ──────────────────────────────────────────────────────
   const [fxRate, setFxRate] = useState<number | null>(null)
   const [fxLoading, setFxLoading] = useState(false)
+  const [fxError, setFxError] = useState(false)
 
   useEffect(() => {
     const groupCurrency = group?.base_currency
     if (!groupCurrency || form.original_currency === groupCurrency) {
       setFxRate(null)
+      setFxError(false)
       return
     }
 
     let cancelled = false
     setFxLoading(true)
     setFxRate(null)
+    setFxError(false)
 
     ;(async () => {
       try {
-        // Fetch today's rates using the group's base currency as the base.
-        // ILS-based rates include all currencies, so GBP→ILS is an inverse lookup.
         await ensureDailyRates(groupCurrency)
         const rate = await getFxRate(form.original_currency, groupCurrency, todayISO())
         if (!cancelled) setFxRate(rate)
       } catch {
-        // silently ignore — UI will just not show the preview
+        if (!cancelled) setFxError(true)
       } finally {
         if (!cancelled) setFxLoading(false)
       }
@@ -209,6 +210,10 @@ export function AddExpensePage() {
       e.amount = 'Enter a valid amount'
     if (parseFloat(form.original_amount) <= 0)
       e.amount = 'Amount must be greater than 0'
+    if (form.original_currency !== groupCurrencySymbol) {
+      if (fxLoading) e.amount = 'Fetching exchange rate, please wait…'
+      else if (fxError || fxRate === null) e.amount = 'Exchange rate unavailable — please try again'
+    }
     if (form.payer_ids.length === 0) e.payers = 'Select at least one payer'
     if (form.participant_ids.length === 0) e.participants = 'Select at least one participant'
 
@@ -342,10 +347,26 @@ export function AddExpensePage() {
                   </div>
                 )
               })()}
-              {!fxLoading && fxRate === null && (
-                <p className="text-xs text-gray-400">
-                  Will be converted to {groupCurrencySymbol} at today's rate
-                </p>
+              {!fxLoading && (fxError || fxRate === null) && (
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-red-400">Could not fetch exchange rate</p>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 underline"
+                    onClick={() => {
+                      const gc = group?.base_currency
+                      if (!gc) return
+                      setFxLoading(true); setFxRate(null); setFxError(false)
+                      ensureDailyRates(gc)
+                        .then(() => getFxRate(form.original_currency, gc, todayISO()))
+                        .then(r => setFxRate(r))
+                        .catch(() => setFxError(true))
+                        .finally(() => setFxLoading(false))
+                    }}
+                  >
+                    Retry
+                  </button>
+                </div>
               )}
             </div>
           )}
