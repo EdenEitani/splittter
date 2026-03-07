@@ -71,7 +71,7 @@ export function GroupSettingsPage() {
   const [copied, setCopied] = useState(false)
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
 
-  const inboundDomain = import.meta.env.VITE_POSTMARK_INBOUND_DOMAIN ?? ''
+  const inboundDomain = import.meta.env.VITE_BILL_EMAIL_DOMAIN ?? ''
   const billEmail = group?.inbound_email_token && inboundDomain
     ? `group-${group.inbound_email_token}@${inboundDomain}`
     : null
@@ -543,7 +543,7 @@ export function GroupSettingsPage() {
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                 <p className="text-xs text-amber-700 font-medium">Setup required</p>
                 <p className="text-xs text-amber-600 mt-0.5">
-                  Set <code className="bg-amber-100 px-1 rounded">VITE_POSTMARK_INBOUND_DOMAIN</code> in your environment to enable this feature.
+                  Set <code className="bg-amber-100 px-1 rounded">VITE_BILL_EMAIL_DOMAIN</code> (e.g. <code className="bg-amber-100 px-1 rounded">bills.yourdomain.com</code>) in your environment to enable this feature.
                 </p>
               </div>
             ) : billEmail ? (

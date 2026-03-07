@@ -1,0 +1,12 @@
+name = "splittter-bill-email"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Enable the Email Worker binding
+[vars]
+SUPABASE_FUNCTION_URL = "https://YOUR_PROJECT_REF.supabase.co/functions/v1/parse-bill-email"
+# WEBHOOK_SECRET must be set as a secret (not here):
+#   wrangler secret put WEBHOOK_SECRET
+
+# Email routing — catch-all for your domain
+# (configure in Cloudflare dashboard: Email → Email Routing → Catch-all → send to this worker)
