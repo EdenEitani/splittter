@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Receipt, CreditCard, Users, Settings } from 'lucide-react'
+import { Receipt, CreditCard, Users, Settings, RefreshCw } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
 import { PaymentItem } from '@/components/PaymentItem'
@@ -10,6 +10,8 @@ import { useExpenses, useDeleteExpense } from '@/hooks/useExpenses'
 import { usePayments, useDeletePayment } from '@/hooks/usePayments'
 import { computeBalances } from '@/lib/balance'
 import { useAuth } from '@/hooks/useAuth'
+import { todayISO } from '@/lib/fx'
+import { useRecurringExpenses, useGenerateDueExpenses } from '@/hooks/useRecurringExpenses'
 import { clsx } from 'clsx'
 import type { ActivityItem } from '@/types'
 
@@ -25,8 +27,24 @@ export function GroupDetailPage() {
   const { data: members, isLoading: loadingMembers } = useGroupMembers(groupId!)
   const { data: expenses, isLoading: loadingExpenses } = useExpenses(groupId!)
   const { data: payments, isLoading: loadingPayments } = usePayments(groupId!)
+  const { data: recurring } = useRecurringExpenses(groupId!)
   const deleteExpense = useDeleteExpense(groupId!)
   const deletePayment = useDeletePayment(groupId!)
+  const generateDue = useGenerateDueExpenses(groupId!, group?.base_currency ?? 'USD')
+  const hasGenerated = useRef(false)
+
+  // Auto-generate overdue recurring expenses (creator only, once per mount)
+  useEffect(() => {
+    if (!recurring || !user || !group || hasGenerated.current) return
+    const today = todayISO()
+    const due = recurring.filter(r => r.active && r.next_due_date <= today)
+    if (due.length > 0) {
+      hasGenerated.current = true
+      generateDue.mutate({ dueExpenses: due, userId: user.id })
+    }
+  }, [recurring, user, group])
+
+  const activeRecurringCount = (recurring ?? []).filter(r => r.active).length
 
   if (loadingGroup) {
     return (
@@ -189,6 +207,17 @@ export function GroupDetailPage() {
 
       {/* FABs */}
       <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 flex flex-col gap-3 z-50">
+        <Link
+          to={`/group/${groupId}/recurring`}
+          className="flex items-center gap-2 bg-white text-gray-600 border border-gray-200 shadow-sm px-4 h-10 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors self-end"
+        >
+          <RefreshCw size={15} className="text-gray-400" />
+          Recurring{activeRecurringCount > 0 && (
+            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              {activeRecurringCount}
+            </span>
+          )}
+        </Link>
         <Link
           to={`/group/${groupId}/add-payment`}
           className="flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-md px-4 h-11 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors"

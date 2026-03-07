@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -9,12 +9,19 @@ import { PersonCardGrid } from '@/components/PersonCard'
 import { useGroup, useGroupMembers } from '@/hooks/useGroups'
 import { useCategories } from '@/hooks/useCategories'
 import { useCreateExpense, useUpdateExpense, useExpenses } from '@/hooks/useExpenses'
+import { useCreateRecurringExpense } from '@/hooks/useRecurringExpenses'
 import { useCategorize } from '@/hooks/useCategorize'
 import { useAuth } from '@/hooks/useAuth'
 import { COMMON_CURRENCIES, fromMinorUnits, formatMoney, toMinorUnits } from '@/lib/money'
 import { clsx } from 'clsx'
-import type { ExpenseFormData, SplitMethod } from '@/types'
+import type { ExpenseFormData, SplitMethod, RecurrenceFrequency } from '@/types'
 import { todayISO, ensureDailyRates, getFxRate } from '@/lib/fx'
+
+const FREQUENCIES: { value: RecurrenceFrequency; label: string }[] = [
+  { value: 'weekly',  label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly',  label: 'Yearly' },
+]
 
 const SPLIT_METHODS: { value: SplitMethod; label: string; desc: string }[] = [
   { value: 'equal', label: 'Equal', desc: 'Divide equally' },
@@ -34,6 +41,7 @@ export function AddExpensePage() {
   const { data: expenses } = useExpenses(groupId!)
   const createExpense = useCreateExpense(groupId!, group?.base_currency ?? 'USD')
   const updateExpense = useUpdateExpense(groupId!, group?.base_currency ?? 'USD')
+  const createRecurring = useCreateRecurringExpense(groupId!)
 
   const existingExpense = isEdit ? expenses?.find(e => e.id === expenseId) : undefined
 
@@ -96,6 +104,8 @@ export function AddExpensePage() {
   const [showCurrencies, setShowCurrencies] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [manualCategory, setManualCategory] = useState(false)
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>('monthly')
 
   // ─── Live FX preview ──────────────────────────────────────────────────────
   const [fxRate, setFxRate] = useState<number | null>(null)
@@ -249,6 +259,13 @@ export function AddExpensePage() {
         await updateExpense.mutateAsync({ expenseId, form })
       } else {
         await createExpense.mutateAsync(form)
+        if (isRecurring) {
+          await createRecurring.mutateAsync({
+            form,
+            frequency,
+            firstOccurrenceDate: form.occurred_at.slice(0, 10),
+          })
+        }
       }
       navigate(`/group/${groupId}`)
     } catch (err) {
@@ -258,7 +275,9 @@ export function AddExpensePage() {
 
   const groupCurrencySymbol = group?.base_currency ?? 'USD'
 
-  const isPending = isEdit ? updateExpense.isPending : createExpense.isPending
+  const isPending = isEdit
+    ? updateExpense.isPending
+    : createExpense.isPending || createRecurring.isPending
 
   return (
     <Layout title={isEdit ? 'Edit Expense' : 'Add Expense'} showBack backTo={`/group/${groupId}`}>
@@ -631,6 +650,59 @@ export function AddExpensePage() {
             rows={2}
           />
         </div>
+
+        {/* ⑨ Recurring — only in create mode */}
+        {!isEdit && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RefreshCw size={16} className="text-gray-400" />
+                <span className="text-sm font-medium text-gray-700">Repeat this expense</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRecurring(r => !r)}
+                className={clsx(
+                  'w-11 h-6 rounded-full transition-colors relative flex-shrink-0',
+                  isRecurring ? 'bg-blue-500' : 'bg-gray-200'
+                )}
+              >
+                <span
+                  className={clsx(
+                    'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                    isRecurring ? 'translate-x-5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+
+            {isRecurring && (
+              <div className="mt-3 pt-3 border-t border-gray-50">
+                <p className="text-xs text-gray-500 mb-2">Frequency</p>
+                <div className="flex gap-2">
+                  {FREQUENCIES.map(f => (
+                    <button
+                      key={f.value}
+                      type="button"
+                      onClick={() => setFrequency(f.value)}
+                      className={clsx(
+                        'flex-1 py-2 text-xs font-medium rounded-xl border-2 transition-all',
+                        frequency === f.value
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  This expense will be added automatically on the next {frequency} cycle.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Submit */}
         {errors.submit && (

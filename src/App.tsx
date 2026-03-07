@@ -14,6 +14,7 @@ import { AddPaymentPage } from '@/pages/AddPaymentPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { GroupSettingsPage } from '@/pages/GroupSettingsPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
+import { RecurringExpensesPage } from '@/pages/RecurringExpensesPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -128,6 +129,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <GroupSettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/group/:groupId/recurring"
+        element={
+          <ProtectedRoute>
+            <RecurringExpensesPage />
           </ProtectedRoute>
         }
       />

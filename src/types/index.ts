@@ -4,6 +4,7 @@ export type GroupType = 'trip' | 'house' | 'event' | 'roommates' | 'custom'
 export type SplitMethod = 'equal' | 'custom_amounts' | 'percent'
 export type ExpenseParticipantRole = 'payer' | 'participant'
 export type MemberRole = 'admin' | 'member'
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 // ─── Database Row Types ───────────────────────────────────────────────────────
 
@@ -158,6 +159,28 @@ export interface PaymentFormData {
   original_currency: string
   notes: string
   occurred_at: string
+}
+
+export interface RecurringExpense {
+  id: string
+  group_id: string
+  created_by: string
+  label: string
+  notes: string | null
+  original_amount: number   // minor units
+  original_currency: string
+  category_id: string | null
+  payer_ids: string[]
+  participant_ids: string[]
+  split_method: SplitMethod
+  custom_amounts: Record<string, string> | null
+  custom_percents: Record<string, string> | null
+  frequency: RecurrenceFrequency
+  next_due_date: string     // YYYY-MM-DD
+  active: boolean
+  created_at: string
+  // joined
+  category?: Category
 }
 
 // ─── Activity Feed ────────────────────────────────────────────────────────────
