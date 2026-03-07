@@ -25,6 +25,8 @@ export interface Group {
   emoji?: string | null
   created_by: string
   created_at: string
+  inbound_email_token?: string
+  bill_default_payer_id?: string | null
 }
 
 export interface GroupMember {

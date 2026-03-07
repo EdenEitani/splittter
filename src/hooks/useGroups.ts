@@ -243,18 +243,21 @@ export function useUpdateGroup() {
       base_currency,
       type,
       emoji,
+      bill_default_payer_id,
     }: {
       groupId: string
       name?: string
       base_currency?: string
       type?: GroupType
       emoji?: string | null
+      bill_default_payer_id?: string | null
     }) => {
       const update: Record<string, string | null> = {}
       if (name !== undefined) update.name = name
       if (base_currency !== undefined) update.base_currency = base_currency
       if (type !== undefined) update.type = type
       if (emoji !== undefined) update.emoji = emoji
+      if (bill_default_payer_id !== undefined) update.bill_default_payer_id = bill_default_payer_id
 
       const { error } = await supabase
         .from('groups')
@@ -266,6 +269,24 @@ export function useUpdateGroup() {
     onSuccess: (_data, { groupId }) => {
       qc.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
       qc.invalidateQueries({ queryKey: groupKeys.all })
+    },
+  })
+}
+
+export function useRegenerateInboundToken(groupId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const newToken = crypto.randomUUID()
+      const { error } = await supabase
+        .from('groups')
+        .update({ inbound_email_token: newToken })
+        .eq('id', groupId)
+      if (error) throw error
+      return newToken
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: groupKeys.detail(groupId) })
     },
   })
 }

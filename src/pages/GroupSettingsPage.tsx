@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles } from 'lucide-react'
+import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup, useUpdateMemberProfile } from '@/hooks/useGroups'
+import { useGroup, useGroupMembers, useAddMember, useUpdateGroup, useDeleteGroup, useUpdateMemberProfile, useRegenerateInboundToken } from '@/hooks/useGroups'
 import { useAuth } from '@/hooks/useAuth'
 import { COMMON_CURRENCIES } from '@/lib/money'
 import { clsx } from 'clsx'
@@ -30,6 +30,7 @@ export function GroupSettingsPage() {
   const updateGroup = useUpdateGroup()
   const deleteGroup = useDeleteGroup()
   const updateMemberProfile = useUpdateMemberProfile()
+  const regenerateToken = useRegenerateInboundToken(groupId!)
 
   // Add member form
   const [name, setName] = useState('')
@@ -65,6 +66,31 @@ export function GroupSettingsPage() {
 
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Bill email
+  const [copied, setCopied] = useState(false)
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
+
+  const inboundDomain = import.meta.env.VITE_POSTMARK_INBOUND_DOMAIN ?? ''
+  const billEmail = group?.inbound_email_token && inboundDomain
+    ? `group-${group.inbound_email_token}@${inboundDomain}`
+    : null
+
+  async function handleCopyEmail() {
+    if (!billEmail) return
+    await navigator.clipboard.writeText(billEmail)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function handleRegenerateToken() {
+    await regenerateToken.mutateAsync()
+    setShowRegenerateConfirm(false)
+  }
+
+  async function handleSaveDefaultPayer(payerId: string | null) {
+    await updateGroup.mutateAsync({ groupId: groupId!, bill_default_payer_id: payerId })
+  }
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault()
@@ -500,6 +526,91 @@ export function GroupSettingsPage() {
               Add member
             </Button>
           </form>
+        </div>
+
+        {/* Bill Forwarding Email */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+            <Mail size={15} className="text-gray-400" />
+            <h2 className="text-sm font-semibold text-gray-700">Bill Forwarding Email</h2>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Forward any bill email with a PDF attachment to the address below. The amount will be extracted automatically and added as an expense in this group.
+            </p>
+
+            {!inboundDomain ? (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <p className="text-xs text-amber-700 font-medium">Setup required</p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  Set <code className="bg-amber-100 px-1 rounded">VITE_POSTMARK_INBOUND_DOMAIN</code> in your environment to enable this feature.
+                </p>
+              </div>
+            ) : billEmail ? (
+              <>
+                {/* Email address display */}
+                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                  <span className="text-xs font-mono text-gray-700 flex-1 break-all">{billEmail}</span>
+                  <button
+                    onClick={handleCopyEmail}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0 ml-1"
+                  >
+                    {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+
+                {/* Default payer */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">Default payer (who pays the bill)</p>
+                  <select
+                    value={group?.bill_default_payer_id ?? group?.created_by ?? ''}
+                    onChange={e => handleSaveDefaultPayer(e.target.value || null)}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 h-10 outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
+                  >
+                    {(members ?? []).map(m => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {m.profile?.display_name ?? m.user_id}
+                        {m.user_id === user?.id ? ' (you)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Regenerate token */}
+                {!showRegenerateConfirm ? (
+                  <button
+                    onClick={() => setShowRegenerateConfirm(true)}
+                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <RefreshCw size={12} />
+                    Regenerate email address
+                  </button>
+                ) : (
+                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 space-y-2">
+                    <p className="text-xs text-orange-700">The old address will stop working. Continue?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRegenerateToken}
+                        disabled={regenerateToken.isPending}
+                        className="text-xs text-white bg-orange-500 hover:bg-orange-600 font-medium px-3 py-1.5 rounded-lg"
+                      >
+                        {regenerateToken.isPending ? 'Regenerating…' : 'Yes, regenerate'}
+                      </button>
+                      <button
+                        onClick={() => setShowRegenerateConfirm(false)}
+                        className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">Loading…</p>
+            )}
+          </div>
         </div>
 
         {/* Danger zone */}
