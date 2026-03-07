@@ -1,17 +1,21 @@
 /**
  * Supabase Edge Function: parse-bill-email
  *
- * Accepts two modes:
+ * Accepts three modes (auto-detected from request body shape):
  *
- * 1. DIRECT mode (Make.com / Google Apps Script / any automation):
+ * 1. MAILJET Parse API webhook (recommended):
  *    POST /parse-bill-email?secret=SECRET
- *    Body: { group_token, pdf_base64, subject?, from_name?, text_body? }
+ *    Body: Mailjet inbound array [{ Sender, Recipient, Subject, TextPart, Attachments }]
  *
- * 2. POSTMARK inbound webhook (if using Postmark):
+ * 2. DIRECT mode (any HTTP client / Cloudflare Worker):
  *    POST /parse-bill-email?secret=SECRET
- *    Body: Postmark InboundWebhook JSON (detected automatically)
+ *    Body: { group_token, pdf_base64?, subject?, from_name?, text_body? }
  *
- * Set POSTMARK_WEBHOOK_SECRET env var to any random string.
+ * 3. POSTMARK inbound webhook (legacy):
+ *    POST /parse-bill-email?secret=SECRET
+ *    Body: Postmark InboundWebhook JSON
+ *
+ * Set WEBHOOK_SECRET env var to any random string (same value in Mailjet webhook URL).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -135,54 +139,73 @@ Deno.serve(async (req) => {
     // Validate webhook secret
     const url = new URL(req.url)
     const secret = url.searchParams.get('secret')
-    const expectedSecret = Deno.env.get('POSTMARK_WEBHOOK_SECRET')
+    const expectedSecret = Deno.env.get('WEBHOOK_SECRET') ?? Deno.env.get('POSTMARK_WEBHOOK_SECRET')
     if (!expectedSecret || secret !== expectedSecret) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders })
     }
 
-    const body = await req.json()
+    const raw = await req.json()
 
-    // ── Detect mode: direct call vs Postmark webhook ──────────────────────
+    // ── Auto-detect source format ─────────────────────────────────────────
     let groupToken: string | null = null
     let pdfBase64: string | null = null
     let subject = ''
     let fromName = ''
     let textBody = ''
 
-    if (body.group_token) {
-      // DIRECT MODE — called from Make.com, Apps Script, etc.
-      groupToken = body.group_token
-      pdfBase64 = body.pdf_base64 ?? null
-      subject = body.subject ?? ''
-      fromName = body.from_name ?? ''
-      textBody = body.text_body ?? ''
+    // Helper: extract group token from any email address string
+    function extractToken(addr: string): string | null {
+      const m = addr.match(/group-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+      return m ? m[1] : null
+    }
+
+    if (Array.isArray(raw) && raw[0]?.Recipient) {
+      // ── MAILJET Parse API ─────────────────────────────────────────────
+      // Body: [{ Sender, Recipient, Subject, TextPart, HtmlPart, Attachments }]
+      const msg = raw[0]
+      groupToken = extractToken(msg.Recipient ?? '')
+      subject = msg.Subject ?? ''
+      fromName = msg.Sender ?? ''
+      textBody = msg.TextPart ?? ''
+
+      // Mailjet attachment: { Filename, ContentType, Base64Content }
+      type MJAttachment = { Filename?: string; ContentType?: string; Base64Content?: string }
+      const pdfAtt = (msg.Attachments as MJAttachment[] ?? []).find(
+        a => a.ContentType === 'application/pdf' || a.Filename?.toLowerCase().endsWith('.pdf')
+      )
+      pdfBase64 = pdfAtt?.Base64Content ?? null
+
+    } else if (raw.group_token) {
+      // ── DIRECT MODE (Cloudflare Worker, custom client) ────────────────
+      groupToken = raw.group_token
+      pdfBase64 = raw.pdf_base64 ?? null
+      subject = raw.subject ?? ''
+      fromName = raw.from_name ?? ''
+      textBody = raw.text_body ?? ''
+
     } else {
-      // POSTMARK MODE — inbound webhook
-      // Extract group token from To address: group-{uuid}@domain
+      // ── POSTMARK inbound webhook ──────────────────────────────────────
       const toAddresses: string[] = []
-      if (body.To) toAddresses.push(body.To)
-      if (Array.isArray(body.ToFull)) {
-        for (const t of body.ToFull) {
-          if (t.Email) toAddresses.push(t.Email)
-        }
+      if (raw.To) toAddresses.push(raw.To)
+      if (Array.isArray(raw.ToFull)) {
+        for (const t of raw.ToFull) { if (t.Email) toAddresses.push(t.Email) }
       }
       for (const addr of toAddresses) {
-        const m = addr.match(/group-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
-        if (m) { groupToken = m[1]; break }
+        const t = extractToken(addr)
+        if (t) { groupToken = t; break }
       }
-
-      const pdfAttachment = (body.Attachments ?? []).find(
-        (a: { ContentType?: string; Name?: string }) =>
-          a.ContentType === 'application/pdf' || a.Name?.toLowerCase().endsWith('.pdf')
+      type PMAttachment = { ContentType?: string; Name?: string; Content?: string }
+      const pdfAtt = (raw.Attachments as PMAttachment[] ?? []).find(
+        a => a.ContentType === 'application/pdf' || a.Name?.toLowerCase().endsWith('.pdf')
       )
-      pdfBase64 = pdfAttachment?.Content ?? null
-      subject = body.Subject ?? ''
-      fromName = body.FromName ?? body.From ?? ''
-      textBody = body.TextBody ?? ''
+      pdfBase64 = pdfAtt?.Content ?? null
+      subject = raw.Subject ?? ''
+      fromName = raw.FromName ?? raw.From ?? ''
+      textBody = raw.TextBody ?? ''
     }
 
     if (!groupToken) {
-      return new Response(JSON.stringify({ error: 'No group_token provided' }), {
+      return new Response(JSON.stringify({ error: 'No group token found in recipient address' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
