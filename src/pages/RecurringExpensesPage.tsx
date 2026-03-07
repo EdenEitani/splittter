@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Pause, Play, Trash2, RefreshCw } from 'lucide-react'
 import { Layout } from '@/components/Layout'
-import { useGroup } from '@/hooks/useGroups'
 import {
   useRecurringExpenses,
   useDeleteRecurringExpense,
   useToggleRecurringExpense,
 } from '@/hooks/useRecurringExpenses'
-import { formatMoney, fromMinorUnits } from '@/lib/money'
+import { formatMoney } from '@/lib/money'
 import { clsx } from 'clsx'
 import type { RecurrenceFrequency } from '@/types'
 
@@ -35,7 +34,6 @@ function formatDate(dateStr: string) {
 
 export function RecurringExpensesPage() {
   const { groupId } = useParams<{ groupId: string }>()
-  const { data: group } = useGroup(groupId!)
   const { data: recurring, isLoading } = useRecurringExpenses(groupId!)
   const deleteRecurring = useDeleteRecurringExpense(groupId!)
   const toggleRecurring = useToggleRecurringExpense(groupId!)
@@ -67,7 +65,6 @@ export function RecurringExpensesPage() {
       ) : (
         <div className="space-y-3">
           {recurring.map(re => {
-            const amount = fromMinorUnits(re.original_amount, re.original_currency)
             const formatted = formatMoney(re.original_amount, re.original_currency)
 
             return (
