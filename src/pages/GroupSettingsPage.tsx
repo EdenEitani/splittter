@@ -71,14 +71,9 @@ export function GroupSettingsPage() {
   const [copied, setCopied] = useState(false)
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
 
-  const inboundDomain = import.meta.env.VITE_BILL_EMAIL_DOMAIN ?? ''
-  const billEmail = group?.inbound_email_token && inboundDomain
-    ? `group-${group.inbound_email_token}@${inboundDomain}`
-    : null
-
   async function handleCopyEmail() {
-    if (!billEmail) return
-    await navigator.clipboard.writeText(billEmail)
+    if (!group?.inbound_email_token) return
+    await navigator.clipboard.writeText(group.inbound_email_token)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -528,36 +523,34 @@ export function GroupSettingsPage() {
           </form>
         </div>
 
-        {/* Bill Forwarding Email */}
+        {/* Auto Bill Import */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
             <Mail size={15} className="text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-700">Bill Forwarding Email</h2>
+            <h2 className="text-sm font-semibold text-gray-700">Auto Bill Import</h2>
           </div>
           <div className="p-4 space-y-3">
             <p className="text-xs text-gray-500 leading-relaxed">
-              Forward any bill email with a PDF attachment to the address below. The amount will be extracted automatically and added as an expense in this group.
+              Use a Google Apps Script to automatically scan your Gmail for bill emails with PDF attachments and add them as expenses in this group.
             </p>
 
-            {!inboundDomain ? (
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                <p className="text-xs text-amber-700 font-medium">Setup required</p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  Set <code className="bg-amber-100 px-1 rounded">VITE_BILL_EMAIL_DOMAIN</code> (e.g. <code className="bg-amber-100 px-1 rounded">bills.yourdomain.com</code>) in your environment to enable this feature.
-                </p>
-              </div>
-            ) : billEmail ? (
+            {group?.inbound_email_token ? (
               <>
-                {/* Email address display */}
-                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
-                  <span className="text-xs font-mono text-gray-700 flex-1 break-all">{billEmail}</span>
-                  <button
-                    onClick={handleCopyEmail}
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0 ml-1"
-                  >
-                    {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
+                {/* Group token */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5 font-medium">Your group token</p>
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                    <span className="text-xs font-mono text-gray-700 flex-1 break-all select-all">
+                      {group.inbound_email_token}
+                    </span>
+                    <button
+                      onClick={handleCopyEmail}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0"
+                    >
+                      {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Default payer */}
@@ -577,6 +570,18 @@ export function GroupSettingsPage() {
                   </select>
                 </div>
 
+                {/* Instructions */}
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-blue-800">How to set up (5 min)</p>
+                  <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside leading-relaxed">
+                    <li>Go to <span className="font-mono bg-blue-100 px-1 rounded">script.google.com</span> → New project</li>
+                    <li>Paste the Apps Script code (see project README or docs)</li>
+                    <li>Set <span className="font-mono bg-blue-100 px-1 rounded">GROUP_TOKEN</span> to the token above</li>
+                    <li>Run once → allow Gmail permissions</li>
+                    <li>Add a trigger: every 15 minutes</li>
+                  </ol>
+                </div>
+
                 {/* Regenerate token */}
                 {!showRegenerateConfirm ? (
                   <button
@@ -584,11 +589,11 @@ export function GroupSettingsPage() {
                     className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     <RefreshCw size={12} />
-                    Regenerate email address
+                    Regenerate token
                   </button>
                 ) : (
                   <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 space-y-2">
-                    <p className="text-xs text-orange-700">The old address will stop working. Continue?</p>
+                    <p className="text-xs text-orange-700">The old token will stop working. You'll need to update your Apps Script. Continue?</p>
                     <div className="flex gap-2">
                       <button
                         onClick={handleRegenerateToken}
