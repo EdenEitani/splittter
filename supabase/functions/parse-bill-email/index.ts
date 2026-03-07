@@ -1,15 +1,17 @@
 /**
  * Supabase Edge Function: parse-bill-email
  *
- * Receives a Postmark InboundWebhook POST, extracts the bill amount
- * from a PDF attachment (or email body), and creates an expense in
- * the target Splittter group.
+ * Accepts two modes:
  *
- * Setup:
- *   - Set POSTMARK_WEBHOOK_SECRET env var (any random string)
- *   - In Postmark, set webhook URL to:
- *       https://<project>.supabase.co/functions/v1/parse-bill-email?secret=<POSTMARK_WEBHOOK_SECRET>
- *   - Group email format:  group-<inbound_email_token>@<your-postmark-inbound-domain>
+ * 1. DIRECT mode (Make.com / Google Apps Script / any automation):
+ *    POST /parse-bill-email?secret=SECRET
+ *    Body: { group_token, pdf_base64, subject?, from_name?, text_body? }
+ *
+ * 2. POSTMARK inbound webhook (if using Postmark):
+ *    POST /parse-bill-email?secret=SECRET
+ *    Body: Postmark InboundWebhook JSON (detected automatically)
+ *
+ * Set POSTMARK_WEBHOOK_SECRET env var to any random string.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -140,25 +142,47 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
 
-    // ── Extract group token from To address ───────────────────────────────
-    // Format: group-{uuid}@{postmark-inbound-domain}
-    const toAddresses: string[] = []
-    if (body.To) toAddresses.push(body.To)
-    if (Array.isArray(body.ToFull)) {
-      for (const t of body.ToFull) {
-        if (t.Email) toAddresses.push(t.Email)
-      }
-    }
-
+    // ── Detect mode: direct call vs Postmark webhook ──────────────────────
     let groupToken: string | null = null
-    for (const addr of toAddresses) {
-      const m = addr.match(/group-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
-      if (m) { groupToken = m[1]; break }
+    let pdfBase64: string | null = null
+    let subject = ''
+    let fromName = ''
+    let textBody = ''
+
+    if (body.group_token) {
+      // DIRECT MODE — called from Make.com, Apps Script, etc.
+      groupToken = body.group_token
+      pdfBase64 = body.pdf_base64 ?? null
+      subject = body.subject ?? ''
+      fromName = body.from_name ?? ''
+      textBody = body.text_body ?? ''
+    } else {
+      // POSTMARK MODE — inbound webhook
+      // Extract group token from To address: group-{uuid}@domain
+      const toAddresses: string[] = []
+      if (body.To) toAddresses.push(body.To)
+      if (Array.isArray(body.ToFull)) {
+        for (const t of body.ToFull) {
+          if (t.Email) toAddresses.push(t.Email)
+        }
+      }
+      for (const addr of toAddresses) {
+        const m = addr.match(/group-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+        if (m) { groupToken = m[1]; break }
+      }
+
+      const pdfAttachment = (body.Attachments ?? []).find(
+        (a: { ContentType?: string; Name?: string }) =>
+          a.ContentType === 'application/pdf' || a.Name?.toLowerCase().endsWith('.pdf')
+      )
+      pdfBase64 = pdfAttachment?.Content ?? null
+      subject = body.Subject ?? ''
+      fromName = body.FromName ?? body.From ?? ''
+      textBody = body.TextBody ?? ''
     }
 
     if (!groupToken) {
-      console.warn('No group token in To address:', toAddresses)
-      return new Response(JSON.stringify({ error: 'No group token found in To address' }), {
+      return new Response(JSON.stringify({ error: 'No group_token provided' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -181,42 +205,32 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ── Extract text from PDF attachment (or email body) ──────────────────
+    // ── Extract text from PDF (or email body) ────────────────────────────
     let rawText = ''
 
-    const attachments = body.Attachments ?? []
-    const pdfAttachment = attachments.find(
-      (a: { ContentType?: string; Name?: string }) =>
-        a.ContentType === 'application/pdf' || a.Name?.toLowerCase().endsWith('.pdf')
-    )
-
-    if (pdfAttachment?.Content) {
+    if (pdfBase64) {
       try {
-        const pdfBytes = Uint8Array.from(atob(pdfAttachment.Content), c => c.charCodeAt(0))
+        const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
         rawText = extractPDFText(pdfBytes)
       } catch (e) {
         console.warn('PDF extraction failed:', e)
       }
     }
 
-    // Fallback: use plain text body
-    if (!rawText && body.TextBody) rawText = body.TextBody
+    // Fallback to plain text body
+    if (!rawText && textBody) rawText = textBody
     if (!rawText && body.HtmlBody) {
-      // Strip HTML tags
       rawText = body.HtmlBody.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
     }
 
     if (!rawText) {
-      return new Response(JSON.stringify({ error: 'No readable content in email' }), {
+      return new Response(JSON.stringify({ error: 'No readable content found' }), {
         status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     // ── Extract amount ────────────────────────────────────────────────────
-    const subject = body.Subject ?? ''
-    const fromName = body.FromName ?? body.From ?? 'Unknown sender'
-
-    const extracted = extractAmount(rawText, subject || `Bill from ${fromName}`)
+    const extracted = extractAmount(rawText, subject || `Bill from ${fromName || 'Unknown'}`)
     if (!extracted) {
       return new Response(JSON.stringify({ error: 'Could not extract amount from bill' }), {
         status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
