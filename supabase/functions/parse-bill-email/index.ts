@@ -95,12 +95,31 @@ interface ExtractedBill {
 function extractAmount(text: string, subject: string): ExtractedBill | null {
   const normalised = text.replace(/\s+/g, ' ')
 
-  // Ordered by specificity — most specific patterns first
+  // Ordered by specificity — each pattern is tried against the whole string.
+  // RTL table OCR can place the number before or after the label, so both orders
+  // are handled where needed.
+  const Q = '["""״׳]'  // matches all Hebrew quote/geresh variants
+  const OPT_CUR = `(?:₪|ש[${Q}']ח|ILS|NIS)?`
+  const AMT = `(\\d[\\d,]*(?:\\.\\d{1,2})?)(?![a-zA-Z\\d])`  // capture group: amount (not followed by letters/digits)
+  const SKIP = `[^₪\\d\\n]{0,40}`             // skip non-numeric chars (label→number gap)
+
   const patterns: { regex: RegExp; currency: string }[] = [
-    // Hebrew: סכום לתשלום / סה"כ לתשלום / לתשלום / סה"כ
-    { regex: /(?:סכום\s+לתשלום|סה[""׳]\s*כ\s+לתשלום|לתשלום|סה[""׳]\s*כ)\s*:?\s*(?:₪|ש[""׳]ח|ILS|NIS)?\s*([\d,]+(?:\.\d{1,2})?)/i, currency: 'ILS' },
-    // Hebrew with ₪ symbol first
-    { regex: /₪\s*([\d,]+(?:\.\d{1,2})?)/i, currency: 'ILS' },
+    // 1. "סה"כ ... כולל מע"מ ..." label→number  (grand total incl. VAT — most authoritative)
+    { regex: new RegExp(`סה${Q}\\s*כ${SKIP}כולל\\s+מע${Q}\\s*מ${SKIP}(?:₪\\s*)?${AMT}`), currency: 'ILS' },
+    // 2. number→label variant for RTL table OCR (number appears left of Hebrew text)
+    { regex: new RegExp(`${AMT}\\s*(?:₪\\s*)?${SKIP}כולל\\s+מע${Q}\\s*מ`), currency: 'ILS' },
+    // 3. "סה"כ לתשלום" label→number
+    { regex: new RegExp(`סה${Q}\\s*כ\\s+לתשלום${SKIP}(?:₪\\s*)?${AMT}`), currency: 'ILS' },
+    // 4. "סה"כ לתשלום" number→label (arnona style: "6,629.80 ₪")
+    { regex: new RegExp(`${AMT}\\s*₪\\s*${SKIP}סה${Q}\\s*כ\\s+לתשלום`), currency: 'ILS' },
+    // 5. "סה"כ:" ₪amount  (rav-pas style)
+    { regex: new RegExp(`סה${Q}\\s*כ\\s*:\\s*₪\\s*${AMT}`), currency: 'ILS' },
+    // 6. "סכום לתשלום"
+    { regex: new RegExp(`סכום\\s+לתשלום${SKIP}(?:₪\\s*)?${AMT}`), currency: 'ILS' },
+    // 7. Generic "סה"כ [optional Hebrew words] number" (catches "סה"כ מחיר", "סה"כ בש"ח", etc.)
+    { regex: new RegExp(`סה${Q}\\s*כ${SKIP}${OPT_CUR}\\s*${AMT}`), currency: 'ILS' },
+    // 8. ₪ symbol alone
+    { regex: /₪\s*(\d[\d,]*(?:\.\d{1,2})?)/, currency: 'ILS' },
     // English: Amount Due / Total Due / Balance Due / Grand Total / Total
     { regex: /(?:Amount\s+Due|Total\s+Due|Balance\s+Due|Balance\s+Forward|Grand\s+Total|Total\s+Amount|Total)\s*:?\s*(?:\$|€|£|₪|USD|ILS|EUR|GBP)?\s*([\d,]+(?:\.\d{1,2})?)/i, currency: 'USD' },
     // Dollar sign
@@ -182,6 +201,10 @@ Deno.serve(async (req) => {
       subject = raw.subject ?? ''
       fromName = raw.from_name ?? ''
       textBody = raw.text_body ?? ''
+      // Strip HTML if plain body is empty
+      if (!textBody && raw.html_body) {
+        textBody = (raw.html_body as string).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+      }
 
     } else {
       // ── POSTMARK inbound webhook ──────────────────────────────────────
@@ -240,10 +263,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fallback to plain text body
-    if (!rawText && textBody) rawText = textBody
-    if (!rawText && body.HtmlBody) {
-      rawText = body.HtmlBody.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
+    // Always append email text body — PDF may be image-based (no extractable text)
+    if (textBody) rawText = (rawText + ' ' + textBody).trim()
+    if (!rawText && raw.HtmlBody) {
+      rawText = (raw.HtmlBody as string).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
     }
 
     if (!rawText) {
@@ -252,10 +275,17 @@ Deno.serve(async (req) => {
       })
     }
 
+    // ── Debug mode: return raw extracted text ─────────────────────────────
+    if (url.searchParams.get('debug') === '1') {
+      return new Response(JSON.stringify({ debug: true, raw_text: rawText.slice(0, 4000) }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // ── Extract amount ────────────────────────────────────────────────────
     const extracted = extractAmount(rawText, subject || `Bill from ${fromName || 'Unknown'}`)
     if (!extracted) {
-      return new Response(JSON.stringify({ error: 'Could not extract amount from bill' }), {
+      return new Response(JSON.stringify({ error: 'Could not extract amount from bill', raw_text_sample: rawText.slice(0, 2000) }), {
         status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -300,17 +330,75 @@ Deno.serve(async (req) => {
 
     const sharePerMember = memberIds.length > 0 ? Math.round(groupMinor / memberIds.length) : groupMinor
 
-    // ── Find "Utilities" category ─────────────────────────────────────────
+    // ── Deduplication check ───────────────────────────────────────────────
+    // Reject if same group + same amount + same sender already exists within the last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: duplicate } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('group_id', group.id)
+      .eq('original_amount', originalMinor)
+      .eq('original_currency', extracted.currency)
+      .ilike('notes', `%${fromName}%`)
+      .gte('occurred_at', sevenDaysAgo)
+      .limit(1)
+      .maybeSingle()
+
+    if (duplicate) {
+      console.log(`Duplicate expense detected for group ${group.id}, skipping.`)
+      return new Response(
+        JSON.stringify({ skipped: true, reason: 'Duplicate expense already recorded', existing_id: duplicate.id }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ── Detect category from Gmail sub-label, sender, or subject ─────────
+    const categoryHint: string = (raw.category_hint as string ?? '').trim()
+    const senderHint = `${fromName} ${subject}`.toLowerCase()
+
+    // Sub-label → DB category search term
+    const LABEL_CATEGORY_MAP: Record<string, string> = {
+      'אינטרנט': 'phone',
+      'ארנונה': 'household',
+      'חשמל וגז': 'electric',
+      'טלפון': 'phone',
+      'מים': 'water',
+      'רבפס': 'transport',
+      'רב פס': 'transport',
+    }
+
+    const SENDER_CATEGORY_MAP: { keywords: string[]; search: string }[] = [
+      { keywords: ['רב פס', 'רב-פס', 'rav pas', 'ravpas', 'rav-pas'], search: 'transport' },
+      { keywords: ['openai', 'anthropic'], search: 'ai' },
+      { keywords: ['pelephone', 'פלאפון', 'partner', 'פרטנר'], search: 'phone' },
+      { keywords: ['electra', 'אלקטרה'], search: 'electric' },
+      { keywords: ['ארנונה'], search: 'household' },
+      { keywords: ['מי 7', 'מי7', 'water'], search: 'water' },
+    ]
+
+    let categorySearch = LABEL_CATEGORY_MAP[categoryHint] ?? ''
+    if (!categorySearch) {
+      for (const { keywords, search } of SENDER_CATEGORY_MAP) {
+        if (keywords.some(k => senderHint.includes(k.toLowerCase()))) {
+          categorySearch = search
+          break
+        }
+      }
+    }
+    if (!categorySearch) categorySearch = 'utilit' // default fallback
+
+    // ── Find category in DB ───────────────────────────────────────────────
     const { data: utilityCategory } = await supabase
       .from('categories')
       .select('id')
       .in('group_type', [group.type, 'all'])
-      .ilike('name', '%utilit%')
+      .ilike('name', `%${categorySearch}%`)
       .limit(1)
       .maybeSingle()
 
     // ── Create expense ────────────────────────────────────────────────────
-    const occurredAt = new Date().toISOString()
+    const emailDate = raw.email_date ? new Date(raw.email_date as string) : null
+    const occurredAt = (emailDate && !isNaN(emailDate.getTime()) ? emailDate : new Date()).toISOString()
     const fxDate = occurredAt.slice(0, 10)
 
     const { data: expense, error: expErr } = await supabase

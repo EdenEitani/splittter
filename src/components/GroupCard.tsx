@@ -35,6 +35,7 @@ interface GroupCardProps {
   group: GroupWithMembers
   netBalance?: number
   currency?: string
+  yearlyTotal?: number
 }
 
 function MemberAvatars({ profiles }: { profiles: Profile[] }) {
@@ -63,7 +64,7 @@ function MemberAvatars({ profiles }: { profiles: Profile[] }) {
   )
 }
 
-export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
+export function GroupCard({ group, netBalance, currency, yearlyTotal }: GroupCardProps) {
   const Icon = GROUP_ICONS[group.type] ?? Users
   const iconColor = GROUP_ICON_COLORS[group.type] ?? GROUP_ICON_COLORS.custom
 
@@ -115,19 +116,32 @@ export function GroupCard({ group, netBalance, currency }: GroupCardProps) {
       {showBalance && (
         <div className="flex items-end justify-between mb-4">
           <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
-              Your balance
-            </p>
-            <p
-              className={clsx(
-                'text-2xl font-bold',
-                isOwed ? 'text-emerald-500' : isOwe ? 'text-red-500' : 'text-gray-400',
-              )}
-            >
-              {netBalance === 0
-                ? '—'
-                : `${isOwed ? '+' : '-'}${formatMoney(Math.abs(netBalance!), currency!)}`}
-            </p>
+            {isSettled && yearlyTotal ? (
+              <>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
+                  {new Date().getFullYear()} total
+                </p>
+                <p className="text-2xl font-bold text-gray-400">
+                  {formatMoney(yearlyTotal, currency!)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
+                  Your balance
+                </p>
+                <p
+                  className={clsx(
+                    'text-2xl font-bold',
+                    isOwed ? 'text-emerald-500' : isOwe ? 'text-red-500' : 'text-gray-400',
+                  )}
+                >
+                  {netBalance === 0
+                    ? '—'
+                    : `${isOwed ? '+' : '-'}${formatMoney(Math.abs(netBalance!), currency!)}`}
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

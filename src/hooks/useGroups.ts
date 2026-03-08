@@ -299,6 +299,26 @@ export interface GroupNetBalance {
   currency: string
 }
 
+export function useGroupsYearlyTotals() {
+  const year = new Date().getFullYear()
+  return useQuery({
+    queryKey: ['groups_yearly_totals', year],
+    staleTime: 1000 * 60,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('expenses')
+        .select('group_id, group_amount')
+        .gte('occurred_at', `${year}-01-01`)
+        .lt('occurred_at', `${year + 1}-01-01`)
+      const totals: Record<string, number> = {}
+      for (const row of data ?? []) {
+        totals[row.group_id] = (totals[row.group_id] ?? 0) + (row.group_amount ?? 0)
+      }
+      return totals
+    },
+  })
+}
+
 export function useUserGroupsBalance(userId: string | undefined) {
   return useQuery({
     queryKey: ['user_groups_balance', userId],

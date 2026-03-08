@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Upload, ChevronDown, ChevronRight } from 'lucide-react'
-import { useGroups, useUserGroupsBalance } from '@/hooks/useGroups'
+import { useGroups, useUserGroupsBalance, useGroupsYearlyTotals } from '@/hooks/useGroups'
 import { usePeopleBalances } from '@/hooks/useBalances'
 import { GroupCard } from '@/components/GroupCard'
 import { PeopleBalances } from '@/components/PeopleBalances'
@@ -16,6 +16,7 @@ export function GroupsPage() {
   const { user } = useAuth()
   const { data: balanceMap } = useUserGroupsBalance(user?.id)
   const { data: peopleBalances, isLoading: loadingPeople } = usePeopleBalances(user?.id)
+  const { data: yearlyTotals } = useGroupsYearlyTotals()
   const [showImport, setShowImport] = useState(false)
 
   // Aggregate totals across all groups by dominant currency
@@ -235,6 +236,7 @@ export function GroupsPage() {
                   group={g}
                   netBalance={b?.net}
                   currency={b?.currency ?? g.base_currency}
+                  yearlyTotal={yearlyTotals?.[g.id]}
                 />
               )
             })}
