@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Plane, Home, Calendar, Building2, Sparkles, Users } from 'lucide-react'
+import { Plane, Home, Calendar, Building2, Sparkles, Users, EyeOff } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { GroupWithMembers, Profile } from '@/types'
 import { formatMoney } from '@/lib/money'
@@ -98,18 +98,26 @@ export function GroupCard({ group, netBalance, currency, yearlyTotal }: GroupCar
             {members.length} member{members.length !== 1 ? 's' : ''}
           </p>
         </div>
-        {showBalance && (
-          <span
-            className={clsx(
-              'text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0',
-              isOwed && 'bg-emerald-100 text-emerald-700',
-              isOwe && 'bg-red-100 text-red-600',
-              isSettled && 'bg-gray-100 text-gray-500',
-            )}
-          >
-            {isOwed ? "You're owed" : isOwe ? 'You owe' : 'Settled up'}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+          {group.exclude_from_totals && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+              <EyeOff size={10} />
+              hidden from totals
+            </span>
+          )}
+          {showBalance && (
+            <span
+              className={clsx(
+                'text-xs font-semibold px-2.5 py-1 rounded-full',
+                isOwed && 'bg-emerald-100 text-emerald-700',
+                isOwe && 'bg-red-100 text-red-600',
+                isSettled && 'bg-gray-100 text-gray-500',
+              )}
+            >
+              {isOwed ? "You're owed" : isOwe ? 'You owe' : 'Settled up'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Balance row */}

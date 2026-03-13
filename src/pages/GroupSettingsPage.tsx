@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw } from 'lucide-react'
+import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw, EyeOff } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -617,6 +617,46 @@ export function GroupSettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Balance visibility */}
+        {group && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+              <EyeOff size={15} className="text-gray-400" />
+              <h2 className="text-sm font-semibold text-gray-700">Dashboard Balance</h2>
+            </div>
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">Ignore debt in total balance</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Hide this group's balance from the totals card on the dashboard. The group's own balance is still shown inside the group.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await updateGroup.mutateAsync({
+                      groupId: groupId!,
+                      exclude_from_totals: !group.exclude_from_totals,
+                    })
+                  }}
+                  className={clsx(
+                    'w-11 h-6 rounded-full transition-colors relative flex-shrink-0',
+                    group.exclude_from_totals ? 'bg-blue-500' : 'bg-gray-200'
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                      group.exclude_from_totals ? 'translate-x-5' : 'translate-x-0.5'
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Danger zone */}
         <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">

@@ -19,10 +19,14 @@ export function GroupsPage() {
   const { data: yearlyTotals } = useGroupsYearlyTotals()
   const [showImport, setShowImport] = useState(false)
 
-  // Aggregate totals across all groups by dominant currency
+  // Aggregate totals across all groups by dominant currency (skip excluded groups)
+  const excludedGroupIds = new Set(
+    (groups ?? []).filter(g => g.exclude_from_totals).map(g => g.id)
+  )
   const totals: Record<string, { owe: number; owed: number }> = {}
   if (balanceMap) {
-    for (const b of Object.values(balanceMap)) {
+    for (const [gid, b] of Object.entries(balanceMap)) {
+      if (excludedGroupIds.has(gid)) continue
       if (!totals[b.currency]) totals[b.currency] = { owe: 0, owed: 0 }
       if (b.net < 0) totals[b.currency].owe += -b.net
       else if (b.net > 0) totals[b.currency].owed += b.net

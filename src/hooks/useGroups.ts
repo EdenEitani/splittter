@@ -244,6 +244,7 @@ export function useUpdateGroup() {
       type,
       emoji,
       bill_default_payer_id,
+      exclude_from_totals,
     }: {
       groupId: string
       name?: string
@@ -251,13 +252,15 @@ export function useUpdateGroup() {
       type?: GroupType
       emoji?: string | null
       bill_default_payer_id?: string | null
+      exclude_from_totals?: boolean
     }) => {
-      const update: Record<string, string | null> = {}
+      const update: Record<string, string | boolean | null> = {}
       if (name !== undefined) update.name = name
       if (base_currency !== undefined) update.base_currency = base_currency
       if (type !== undefined) update.type = type
       if (emoji !== undefined) update.emoji = emoji
       if (bill_default_payer_id !== undefined) update.bill_default_payer_id = bill_default_payer_id
+      if (exclude_from_totals !== undefined) update.exclude_from_totals = exclude_from_totals
 
       const { error } = await supabase
         .from('groups')
