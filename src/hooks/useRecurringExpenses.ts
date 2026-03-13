@@ -150,6 +150,7 @@ export function useGenerateDueExpenses(groupId: string, groupCurrency: string) {
             category_confidence: null,
             occurred_at: currentDate + 'T12:00:00',
             payer_ids: re.payer_ids,
+            payer_amounts: {},
             participant_ids: re.participant_ids,
             split_method: re.split_method,
             custom_amounts: re.custom_amounts ?? {},

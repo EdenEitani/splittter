@@ -57,6 +57,7 @@ export function AddExpensePage() {
     notes: '',
     occurred_at: todayISO() + 'T12:00:00',
     payer_ids: user?.id ? [user.id] : [],
+    payer_amounts: {},
     participant_ids: [],
     split_method: 'equal',
     custom_amounts: {},
@@ -93,6 +94,7 @@ export function AddExpensePage() {
       notes: existingExpense.notes ?? '',
       occurred_at: existingExpense.occurred_at.slice(0, 10) + 'T12:00:00',
       payer_ids: payers,
+      payer_amounts: {},
       participant_ids: participants,
       split_method: 'equal',
       custom_amounts: {},
@@ -164,12 +166,25 @@ export function AddExpensePage() {
   }
 
   function togglePayer(userId: string) {
-    setForm(f => ({
-      ...f,
-      payer_ids: f.payer_ids.includes(userId)
+    setForm(f => {
+      const isRemoving = f.payer_ids.includes(userId)
+      const newPayerIds = isRemoving
         ? f.payer_ids.filter(id => id !== userId)
-        : [...f.payer_ids, userId],
-    }))
+        : [...f.payer_ids, userId]
+      const newPayerAmounts = { ...f.payer_amounts }
+      if (isRemoving) {
+        delete newPayerAmounts[userId]
+        // Recalculate last payer's auto-amount
+        if (newPayerIds.length > 1) {
+          const total = parseFloat(f.original_amount || '0')
+          const lastId = newPayerIds[newPayerIds.length - 1]
+          const nonLastSum = newPayerIds.slice(0, -1)
+            .reduce((s, id) => s + parseFloat(newPayerAmounts[id] || '0'), 0)
+          newPayerAmounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
+        }
+      }
+      return { ...f, payer_ids: newPayerIds, payer_amounts: newPayerAmounts }
+    })
   }
 
   function toggleParticipant(userId: string) {
@@ -225,6 +240,15 @@ export function AddExpensePage() {
       else if (fxError || fxRate === null) e.amount = 'Exchange rate unavailable — please try again'
     }
     if (form.payer_ids.length === 0) e.payers = 'Select at least one payer'
+    if (form.payer_ids.length > 1) {
+      const payerTotal = form.payer_ids.reduce(
+        (sum, id) => sum + parseFloat(form.payer_amounts[id] || '0'),
+        0
+      )
+      const inputTotal = parseFloat(form.original_amount || '0')
+      if (Math.abs(payerTotal - inputTotal) > 0.02)
+        e.payers = `Payer amounts must add up to ${inputTotal.toFixed(2)} (currently ${payerTotal.toFixed(2)})`
+    }
     if (form.participant_ids.length === 0) e.participants = 'Select at least one participant'
 
     if (form.split_method === 'custom_amounts') {
@@ -451,6 +475,51 @@ export function AddExpensePage() {
             selected={form.payer_ids}
             onToggle={togglePayer}
           />
+
+          {/* Per-payer amounts when multiple payers */}
+          {form.payer_ids.length > 1 && (
+            <div className="mt-4 pt-4 border-t border-gray-50 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                How much each paid
+              </p>
+              {form.payer_ids.map((uid, i) => {
+                const p = profiles.find(pr => pr.id === uid)
+                const isLast = i === form.payer_ids.length - 1
+                return (
+                  <div key={uid} className="flex items-center gap-2">
+                    <span className="text-sm text-gray-700 flex-1 truncate">
+                      {p?.display_name.split(' ')[0] ?? uid}
+                    </span>
+                    {isLast ? (
+                      <div className="w-24 h-9 flex items-center justify-end px-2 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-sm text-gray-500 font-medium">
+                        {form.payer_amounts[uid] || '0.00'}
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={form.payer_amounts[uid] ?? ''}
+                        onChange={e => {
+                          const newAmounts = { ...form.payer_amounts, [uid]: e.target.value }
+                          const total = parseFloat(form.original_amount || '0')
+                          const lastId = form.payer_ids[form.payer_ids.length - 1]
+                          const nonLastSum = form.payer_ids.slice(0, -1)
+                            .reduce((sum, id) => sum + parseFloat(newAmounts[id] || '0'), 0)
+                          newAmounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
+                          setForm(f => ({ ...f, payer_amounts: newAmounts }))
+                        }}
+                        className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                        step="0.01"
+                        min="0"
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {errors.payers && <p className="text-xs text-red-500 mt-2">{errors.payers}</p>}
         </div>
 

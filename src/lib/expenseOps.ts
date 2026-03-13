@@ -65,19 +65,37 @@ export async function createExpenseInSupabase(
   if (error) throw error
 
   const payerIds = form.payer_ids
-  const payerShare = payerIds.length > 0 ? Math.round(groupMinor / payerIds.length) : 0
+  const hasCustomPayerAmounts =
+    payerIds.length > 1 && Object.keys(form.payer_amounts ?? {}).length > 0
 
   const participantRows = [
-    ...payerIds.map((uid, i) => ({
-      expense_id: expense.id,
-      user_id: uid,
-      role: 'payer' as const,
-      weight: 1,
-      share_amount_group_currency:
-        i < payerIds.length - 1
-          ? payerShare
-          : groupMinor - payerShare * (payerIds.length - 1),
-    })),
+    ...payerIds.map((uid, i) => {
+      let share: number
+      if (hasCustomPayerAmounts) {
+        const payerOriginalMinor = toMinorUnits(form.payer_amounts[uid] || '0', form.original_currency)
+        share = convertAmount(payerOriginalMinor, fxRate)
+        // Last payer absorbs any rounding remainder
+        if (i === payerIds.length - 1) {
+          const prevSum = payerIds.slice(0, -1).reduce((s, id) => {
+            const m = toMinorUnits(form.payer_amounts[id] || '0', form.original_currency)
+            return s + convertAmount(m, fxRate)
+          }, 0)
+          share = Math.max(0, groupMinor - prevSum)
+        }
+      } else {
+        const equalShare = Math.round(groupMinor / payerIds.length)
+        share = i < payerIds.length - 1
+          ? equalShare
+          : groupMinor - equalShare * (payerIds.length - 1)
+      }
+      return {
+        expense_id: expense.id,
+        user_id: uid,
+        role: 'payer' as const,
+        weight: 1,
+        share_amount_group_currency: share,
+      }
+    }),
     ...form.participant_ids.map(uid => ({
       expense_id: expense.id,
       user_id: uid,
@@ -136,8 +154,8 @@ export async function buildOptimisticExpense(
       : undefined,
   )
 
-  const payerShare =
-    form.payer_ids.length > 0 ? Math.round(groupMinor / form.payer_ids.length) : 0
+  const hasCustomPayerAmounts =
+    form.payer_ids.length > 1 && Object.keys(form.payer_amounts ?? {}).length > 0
 
   return {
     id: localId,
@@ -158,17 +176,30 @@ export async function buildOptimisticExpense(
     occurred_at: form.occurred_at,
     created_at: new Date().toISOString(),
     participants: [
-      ...form.payer_ids.map((uid, i) => ({
-        expense_id: localId,
-        user_id: uid,
-        role: 'payer' as const,
-        weight: 1,
-        share_amount_group_currency:
-          i < form.payer_ids.length - 1
-            ? payerShare
-            : groupMinor - payerShare * (form.payer_ids.length - 1),
-        profile: profileMap[uid],
-      })),
+      ...form.payer_ids.map((uid, i) => {
+        let share: number
+        if (hasCustomPayerAmounts) {
+          share = toMinorUnits(form.payer_amounts[uid] || '0', form.original_currency)
+          if (i === form.payer_ids.length - 1) {
+            const prevSum = form.payer_ids.slice(0, -1)
+              .reduce((s, id) => s + toMinorUnits(form.payer_amounts[id] || '0', form.original_currency), 0)
+            share = Math.max(0, groupMinor - prevSum)
+          }
+        } else {
+          const equalShare = Math.round(groupMinor / form.payer_ids.length)
+          share = i < form.payer_ids.length - 1
+            ? equalShare
+            : groupMinor - equalShare * (form.payer_ids.length - 1)
+        }
+        return {
+          expense_id: localId,
+          user_id: uid,
+          role: 'payer' as const,
+          weight: 1,
+          share_amount_group_currency: share,
+          profile: profileMap[uid],
+        }
+      }),
       ...form.participant_ids.map(uid => ({
         expense_id: localId,
         user_id: uid,

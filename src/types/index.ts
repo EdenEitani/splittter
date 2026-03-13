@@ -148,6 +148,7 @@ export interface ExpenseFormData {
   notes: string
   occurred_at: string
   payer_ids: string[]       // user ids
+  payer_amounts: Record<string, string>   // userId → amount string (only when multiple payers)
   participant_ids: string[] // user ids
   split_method: SplitMethod
   custom_amounts: Record<string, string>  // userId → amount string
