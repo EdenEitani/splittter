@@ -15,6 +15,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { GroupSettingsPage } from '@/pages/GroupSettingsPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { RecurringExpensesPage } from '@/pages/RecurringExpensesPage'
+import { JoinGroupPage } from '@/pages/JoinGroupPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -156,6 +157,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* Group invite — no auth wrapper, page handles it */}
+      <Route path="/join/:groupId/:token" element={<JoinGroupPage />} />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Receipt, CreditCard, Users, Settings, RefreshCw } from 'lucide-react'
+import { Receipt, CreditCard, Users, Settings, RefreshCw, Search, X } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
 import { PaymentItem } from '@/components/PaymentItem'
@@ -21,6 +21,14 @@ export function GroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('activity')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Undo-delete state
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; type: 'expense' | 'payment' } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string; type: 'expense' | 'payment'; label: string
+  } | null>(null)
 
   const { user } = useAuth()
   const { data: group, isLoading: loadingGroup } = useGroup(groupId!)
@@ -45,6 +53,32 @@ export function GroupDetailPage() {
   }, [recurring, user, group])
 
   const activeRecurringCount = (recurring ?? []).filter(r => r.active).length
+
+  function scheduleDeletion(id: string, type: 'expense' | 'payment', label: string) {
+    // Flush any previous pending delete immediately
+    if (pendingDeleteRef.current && deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current)
+      const prev = pendingDeleteRef.current
+      if (prev.type === 'expense') deleteExpense.mutate(prev.id)
+      else deletePayment.mutate(prev.id)
+    }
+    pendingDeleteRef.current = { id, type }
+    setPendingDelete({ id, type, label })
+    deleteTimerRef.current = setTimeout(() => {
+      if (type === 'expense') deleteExpense.mutate(id)
+      else deletePayment.mutate(id)
+      pendingDeleteRef.current = null
+      setPendingDelete(null)
+      deleteTimerRef.current = null
+    }, 5000)
+  }
+
+  function handleUndo() {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current)
+    deleteTimerRef.current = null
+    pendingDeleteRef.current = null
+    setPendingDelete(null)
+  }
 
   if (loadingGroup) {
     return (
@@ -82,6 +116,17 @@ export function GroupDetailPage() {
     ...(expenses ?? []).map(e => ({ kind: 'expense' as const, data: e })),
     ...(payments ?? []).map(p => ({ kind: 'payment' as const, data: p })),
   ].sort((a, b) => b.data.occurred_at.localeCompare(a.data.occurred_at))
+
+  const q = searchQuery.toLowerCase().trim()
+  const visibleActivity = activity
+    .filter(item => item.data.id !== pendingDelete?.id)
+    .filter(item => {
+      if (!q) return true
+      if (item.kind === 'expense') return item.data.label.toLowerCase().includes(q)
+      const from = (item.data as typeof item.data & { from_profile?: { display_name?: string } }).from_profile?.display_name?.toLowerCase() ?? ''
+      const to = (item.data as typeof item.data & { to_profile?: { display_name?: string } }).to_profile?.display_name?.toLowerCase() ?? ''
+      return from.includes(q) || to.includes(q)
+    })
 
   const loading = loadingExpenses || loadingPayments || loadingMembers
 
@@ -123,6 +168,28 @@ export function GroupDetailPage() {
         {/* Activity tab */}
         {tab === 'activity' && (
           <div className="space-y-2.5">
+            {/* Search bar */}
+            {!loading && activity.length > 0 && (
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search expenses & payments…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full h-10 pl-9 pr-8 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-300"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {loading ? (
               [1, 2, 3].map(i => (
                 <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
@@ -133,14 +200,18 @@ export function GroupDetailPage() {
                 <p className="text-gray-500 text-sm">No activity yet</p>
                 <p className="text-gray-400 text-xs mt-1">Add an expense to get started</p>
               </div>
+            ) : visibleActivity.length === 0 && q ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400 text-sm">No results for "{searchQuery}"</p>
+              </div>
             ) : (
-              activity.map(item =>
+              visibleActivity.map(item =>
                 item.kind === 'expense' ? (
                   <ExpenseItem
                     key={item.data.id}
                     expense={item.data}
                     currentUserId={user?.id}
-                    onDelete={id => deleteExpense.mutate(id)}
+                    onDelete={id => scheduleDeletion(id, 'expense', item.data.label)}
                     onEdit={id => navigate(`/group/${groupId}/edit-expense/${id}`)}
                   />
                 ) : (
@@ -148,7 +219,11 @@ export function GroupDetailPage() {
                     key={item.data.id}
                     payment={item.data}
                     currentUserId={user?.id}
-                    onDelete={id => deletePayment.mutate(id)}
+                    onDelete={id => {
+                      const p = item.data
+                      const label = `${p.from_profile?.display_name?.split(' ')[0] ?? '?'} → ${p.to_profile?.display_name?.split(' ')[0] ?? '?'}`
+                      scheduleDeletion(id, 'payment', label)
+                    }}
                   />
                 )
               )
@@ -204,6 +279,23 @@ export function GroupDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Undo delete toast */}
+      {pendingDelete && (
+        <div className="fixed bottom-36 md:bottom-24 left-4 right-4 md:left-auto md:right-6 md:w-80 z-50 animate-in slide-in-from-bottom-2">
+          <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 flex items-center justify-between shadow-xl">
+            <p className="text-sm truncate flex-1">
+              Deleted <span className="font-semibold">"{pendingDelete.label}"</span>
+            </p>
+            <button
+              onClick={handleUndo}
+              className="ml-3 text-sm font-bold text-blue-300 hover:text-blue-200 flex-shrink-0 transition-colors"
+            >
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* FABs */}
       <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 flex flex-col gap-3 z-50">

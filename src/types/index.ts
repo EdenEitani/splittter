@@ -28,6 +28,7 @@ export interface Group {
   inbound_email_token?: string
   bill_default_payer_id?: string | null
   exclude_from_totals?: boolean
+  invite_token?: string
 }
 
 export interface GroupMember {

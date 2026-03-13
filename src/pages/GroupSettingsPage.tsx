@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw, EyeOff } from 'lucide-react'
+import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw, EyeOff, Link2 } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -70,6 +70,9 @@ export function GroupSettingsPage() {
   // Bill email
   const [copied, setCopied] = useState(false)
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
+
+  // Invite link
+  const [inviteCopied, setInviteCopied] = useState(false)
 
   async function handleCopyEmail() {
     if (!group?.inbound_email_token) return
@@ -424,8 +427,24 @@ export function GroupSettingsPage() {
 
         {/* Members list */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50">
+          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">Members</h2>
+            {group?.invite_token && (
+              <button
+                onClick={async () => {
+                  const link = `${window.location.origin}/join/${groupId}/${group.invite_token}`
+                  await navigator.clipboard.writeText(link)
+                  setInviteCopied(true)
+                  setTimeout(() => setInviteCopied(false), 2000)
+                }}
+                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                {inviteCopied
+                  ? <><Check size={12} className="text-green-500" /> Copied!</>
+                  : <><Link2 size={12} /> Copy invite link</>
+                }
+              </button>
+            )}
           </div>
           <div className="divide-y divide-gray-50">
             {(members ?? []).map(m => (
