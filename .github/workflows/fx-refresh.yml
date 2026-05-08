@@ -82,3 +82,26 @@ jobs:
             echo "::error::USD FX refresh failed with HTTP ${HTTP_CODE}: ${BODY}"
             exit 1
           fi
+
+      # GBP base for explicit GBP <> ILS coverage
+      - name: Refresh GBP rates
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          KEY="${SUPABASE_PUBLISHABLE_KEY:-$SUPABASE_ANON_KEY}"
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${KEY}" \
+            -H "apikey: ${KEY}" \
+            -d "{\"base_currency\": \"GBP\", \"date\": \"${DATE}\"}" \
+            "${SUPABASE_URL}/functions/v1/fx-refresh-daily-rates")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response (${HTTP_CODE}): ${BODY}"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::GBP FX refresh failed with HTTP ${HTTP_CODE}: ${BODY}"
+            exit 1
+          fi
