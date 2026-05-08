@@ -1,59 +1,65 @@
 import { useEffect, useState } from 'react'
-import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import {
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile as updateFirebaseProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth'
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { firebaseAuth, firestore } from '@/lib/firebase'
 import type { Profile } from '@/types'
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<{ user: { id: string; email: string | null } } | null>(null)
+  const [user, setUser] = useState<{ id: string; email: string | null } | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // onAuthStateChange fires immediately with INITIAL_SESSION —
-    // use it as the single source of truth (Supabase v2 recommended pattern).
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          loadProfile(session.user.id)
-        } else {
-          setProfile(null)
-          setLoading(false)
-        }
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (nextUser) => {
+      setUser(nextUser ? { id: nextUser.uid, email: nextUser.email } : null)
+      setSession(nextUser ? { user: { id: nextUser.uid, email: nextUser.email } } : null)
+      if (nextUser) {
+        await loadProfile(nextUser)
+      } else {
+        setProfile(null)
+        setLoading(false)
       }
-    )
+    })
 
-    return () => subscription.unsubscribe()
+    return () => unsubscribe()
   }, [])
 
-  async function loadProfile(userId: string) {
+  async function loadProfile(authUser: FirebaseUser) {
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+      const profileRef = doc(firestore, 'profiles', authUser.uid)
+      const snapshot = await getDoc(profileRef)
 
-      if (data) {
-        setProfile(data as Profile)
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        setProfile({
+          id: authUser.uid,
+          display_name: data.displayName ?? authUser.displayName ?? 'User',
+          avatar_url: data.avatarUrl ?? authUser.photoURL ?? null,
+          email: data.email ?? authUser.email ?? null,
+          is_guest: !!data.isGuest,
+          created_at: data.createdAt ?? undefined,
+        })
       } else {
-        // Profile not yet created (trigger might be slow), create it
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (authUser) {
-          const displayName =
-            authUser.user_metadata?.full_name ??
-            authUser.email?.split('@')[0] ??
-            'User'
-          await supabase.from('profiles').upsert({
-            id: userId,
-            display_name: displayName,
-            avatar_url: authUser.user_metadata?.avatar_url ?? null,
-            is_guest: false,
-          })
-          setProfile({ id: userId, display_name: displayName, avatar_url: null })
-        }
+        const displayName = authUser.displayName ?? authUser.email?.split('@')[0] ?? 'User'
+        const avatarUrl = authUser.photoURL ?? null
+        await setDoc(profileRef, {
+          displayName,
+          avatarUrl,
+          email: authUser.email ?? null,
+          isGuest: false,
+          createdAt: serverTimestamp(),
+        }, { merge: true })
+        setProfile({ id: authUser.uid, display_name: displayName, avatar_url: avatarUrl, email: authUser.email ?? undefined, is_guest: false })
       }
     } catch (err) {
       console.error('[auth] loadProfile error:', err)
@@ -63,39 +69,66 @@ export function useAuth() {
   }
 
   async function signInWithGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL ?? '/'}`,
-      },
-    })
-    return { error }
+    try {
+      const provider = new GoogleAuthProvider()
+      await signInWithPopup(firebaseAuth, provider)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error }
+    try {
+      await signInWithEmailAndPassword(firebaseAuth, email, password)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
   async function signUp(email: string, password: string) {
-    const { error } = await supabase.auth.signUp({ email, password })
-    return { error }
+    try {
+      await createUserWithEmailAndPassword(firebaseAuth, email, password)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
+    await firebaseSignOut(firebaseAuth)
   }
 
   async function updateProfile(updates: Partial<Pick<Profile, 'display_name' | 'avatar_url'>>) {
     if (!user) return
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', user.id)
-      .select()
-      .single()
-    if (!error && data) setProfile(data as Profile)
-    return { error }
+    try {
+      const authUser = firebaseAuth.currentUser
+      if (!authUser) throw new Error('Not authenticated')
+
+      if (updates.display_name || updates.avatar_url) {
+        await updateFirebaseProfile(authUser, {
+          displayName: updates.display_name ?? authUser.displayName,
+          photoURL: updates.avatar_url ?? authUser.photoURL,
+        })
+      }
+
+      const profileRef = doc(firestore, 'profiles', user.id)
+      await updateDoc(profileRef, {
+        ...(updates.display_name !== undefined ? { displayName: updates.display_name } : {}),
+        ...(updates.avatar_url !== undefined ? { avatarUrl: updates.avatar_url } : {}),
+      })
+
+      setProfile((prev) => prev ? {
+        ...prev,
+        ...(updates.display_name !== undefined ? { display_name: updates.display_name } : {}),
+        ...(updates.avatar_url !== undefined ? { avatar_url: updates.avatar_url } : {}),
+      } : prev)
+
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
   return { session, user, profile, loading, signInWithGoogle, signIn, signUp, signOut, updateProfile }

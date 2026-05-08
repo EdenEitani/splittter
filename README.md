@@ -175,6 +175,9 @@ To swap LLM providers, change the API URL and auth header in the edge function.
 
 See [`docs/architecture.md`](docs/architecture.md).
 
+For Supabase -> Firebase migration assets and runbook, see
+[`docs/firebase-migration.md`](docs/firebase-migration.md).
+
 **Key decisions:**
 - Amounts stored as **BIGINT minor units** (cents) — no floating-point drift
 - Balance computed **client-side** from raw expense/payment data

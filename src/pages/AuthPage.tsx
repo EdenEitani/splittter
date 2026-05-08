@@ -14,12 +14,19 @@ export function AuthPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
 
+  function getErrorMessage(error: unknown) {
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      return String((error as { message?: unknown }).message ?? 'Authentication failed')
+    }
+    return 'Authentication failed'
+  }
+
   async function handleGoogle() {
     setGoogleLoading(true)
     setError('')
     const { error } = await signInWithGoogle()
     if (error) {
-      setError(error.message)
+      setError(getErrorMessage(error))
       setGoogleLoading(false)
     }
     // On success the browser navigates away; no need to reset state
@@ -33,7 +40,7 @@ export function AuthPage() {
     const { error } = mode === 'signin'
       ? await signIn(email.trim().toLowerCase(), password)
       : await signUp(email.trim().toLowerCase(), password)
-    if (error) setError(error.message)
+    if (error) setError(getErrorMessage(error))
     setLoading(false)
   }
 

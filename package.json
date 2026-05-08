@@ -7,9 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migrate:export:supabase": "node scripts/export-supabase-json.mjs",
+    "migrate:import:firestore": "node scripts/import-firestore-json.mjs",
+    "migrate:supabase-to-firestore": "node scripts/migrate-supabase-to-firestore.mjs"
   },
   "dependencies": {
+    "firebase": "^12.6.0",
     "@supabase/supabase-js": "^2.97.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.90.21",
@@ -37,6 +41,8 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
+    "firebase-admin": "^13.6.0",
+    "pg": "^8.16.3",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0"
   }

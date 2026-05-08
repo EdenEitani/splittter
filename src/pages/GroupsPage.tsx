@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Upload, ChevronDown, ChevronRight } from 'lucide-react'
-import { useGroups, useUserGroupsBalance, useGroupsYearlyTotals } from '@/hooks/useGroups'
+import { Plus, Upload, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react'
+import { useGroups, useArchivedGroups, useUpdateGroup, useUserGroupsBalance, useGroupsYearlyTotals } from '@/hooks/useGroups'
 import { usePeopleBalances } from '@/hooks/useBalances'
 import { GroupCard } from '@/components/GroupCard'
 import { PeopleBalances } from '@/components/PeopleBalances'
@@ -13,11 +13,14 @@ import type { GroupWithMembers } from '@/types'
 
 export function GroupsPage() {
   const { data: groups, isLoading } = useGroups()
+  const { data: archivedGroups } = useArchivedGroups()
+  const updateGroup = useUpdateGroup()
   const { user } = useAuth()
   const { data: balanceMap } = useUserGroupsBalance(user?.id)
   const { data: peopleBalances, isLoading: loadingPeople } = usePeopleBalances(user?.id)
   const { data: yearlyTotals } = useGroupsYearlyTotals()
   const [showImport, setShowImport] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   // Aggregate totals across all groups by dominant currency (skip excluded groups)
   const excludedGroupIds = new Set(
@@ -246,6 +249,50 @@ export function GroupsPage() {
             })}
           </div>
         </>
+      )}
+
+      {/* ── Archived groups ─────────────────────────────────────── */}
+      {(archivedGroups?.length ?? 0) > 0 && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => setShowArchived(o => !o)}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-3"
+          >
+            <Archive size={15} />
+            <span>Archived groups ({archivedGroups!.length})</span>
+            {showArchived
+              ? <ChevronDown size={14} />
+              : <ChevronRight size={14} />
+            }
+          </button>
+          {showArchived && (
+            <div className="space-y-2">
+              {archivedGroups!.map(g => (
+                <div
+                  key={g.id}
+                  className="flex items-center justify-between bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{g.emoji ?? '📁'}</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">{g.name}</p>
+                      <p className="text-xs text-gray-400 capitalize">{g.type}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => updateGroup.mutate({ groupId: g.id, archived: false })}
+                    disabled={updateGroup.isPending}
+                    className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    <ArchiveRestore size={13} />
+                    Unarchive
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* FAB – mobile only */}

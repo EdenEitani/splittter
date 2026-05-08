@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { httpsCallable } from 'firebase/functions'
+import { firebaseFunctions } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
 import { groupKeys } from '@/hooks/useGroups'
 
@@ -26,19 +27,18 @@ export function JoinGroupPage() {
     hasJoined.current = true
     setState('joining')
 
-    supabase
-      .rpc('join_group_with_invite', { p_group_id: groupId, p_token: token })
-      .then(({ error }) => {
-        if (error) {
-          setState('error')
-          setErrorMsg(error.message)
-        } else {
-          qc.invalidateQueries({ queryKey: groupKeys.all })
-          setState('success')
-          navigate(`/group/${groupId}`, { replace: true })
-        }
+    const joinGroup = httpsCallable(firebaseFunctions, 'joinGroupWithInvite')
+    joinGroup({ groupId, token })
+      .then(() => {
+        qc.invalidateQueries({ queryKey: groupKeys.all })
+        setState('success')
+        navigate(`/group/${groupId}`, { replace: true })
       })
-  }, [authLoading, session])
+      .catch((error) => {
+          setState('error')
+          setErrorMsg(error.message ?? 'Failed to join group')
+      })
+  }, [authLoading, groupId, navigate, qc, session, token])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">

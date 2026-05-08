@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw, EyeOff, Link2 } from 'lucide-react'
+import { UserPlus, Check, Pencil, Trash2, AlertTriangle, Plane, Home, Calendar, Building2, Sparkles, Mail, Copy, RefreshCw, EyeOff, Link2, Archive } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -66,6 +66,7 @@ export function GroupSettingsPage() {
 
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
 
   // Bill email
   const [copied, setCopied] = useState(false)
@@ -206,6 +207,15 @@ export function GroupSettingsPage() {
   async function handleDelete() {
     try {
       await deleteGroup.mutateAsync(groupId!)
+      navigate('/')
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  async function handleArchive() {
+    try {
+      await updateGroup.mutateAsync({ groupId: groupId!, archived: true })
       navigate('/')
     } catch (err) {
       alert((err as Error).message)
@@ -682,7 +692,38 @@ export function GroupSettingsPage() {
           <div className="px-4 py-3 border-b border-red-50">
             <h2 className="text-sm font-semibold text-red-600">Danger Zone</h2>
           </div>
-          <div className="p-4">
+          <div className="p-4 space-y-3">
+            {/* Archive */}
+            {!showArchiveConfirm ? (
+              <button
+                onClick={() => setShowArchiveConfirm(true)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <Archive size={16} />
+                Archive this group
+              </button>
+            ) : (
+              <div className="space-y-2 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <p className="text-sm text-gray-700">The group will be hidden from the dashboard. You can unarchive it anytime from Settings.</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    loading={updateGroup.isPending}
+                    onClick={handleArchive}
+                  >
+                    <Archive size={15} className="mr-1.5" />
+                    Yes, archive
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowArchiveConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-red-50" />
+
+            {/* Delete */}
             {!showDeleteConfirm ? (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
