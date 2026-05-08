@@ -145,9 +145,11 @@ The deploy workflow runs on every push to `main`.
 
 ### Automated (GitHub Actions)
 
-`.github/workflows/fx-refresh.yml` runs daily at 06:00 UTC for USD, EUR, GBP.
+`.github/workflows/fx-refresh.yml` runs daily at 06:00 UTC and refreshes ILS + USD.
 
-Required repo secrets: `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+Required repo secrets: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`
+
+Legacy fallback is supported: if `SUPABASE_PUBLISHABLE_KEY` is not set, the workflow uses `SUPABASE_ANON_KEY`.
 
 ### Manual
 
