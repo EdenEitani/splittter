@@ -15,14 +15,15 @@ export function GroupsPage() {
   const { data: groups, isLoading } = useGroups()
   const { user } = useAuth()
   const { data: balanceMap } = useUserGroupsBalance(user?.id)
-  const { data: peopleBalances, isLoading: loadingPeople } = usePeopleBalances(user?.id)
   const { data: yearlyTotals } = useGroupsYearlyTotals()
   const [showImport, setShowImport] = useState(false)
 
-  // Aggregate totals across all groups by dominant currency (skip excluded groups)
+  // Excluded groups: skip in both totals and people balances
   const excludedGroupIds = new Set(
     (groups ?? []).filter(g => g.exclude_from_totals).map(g => g.id)
   )
+
+  const { data: peopleBalances, isLoading: loadingPeople } = usePeopleBalances(user?.id, excludedGroupIds)
   const totals: Record<string, { owe: number; owed: number }> = {}
   if (balanceMap) {
     for (const [gid, b] of Object.entries(balanceMap)) {

@@ -26,9 +26,10 @@ export interface PersonBalance {
  *   1. By email (case-insensitive) – same email = same person
  *   2. By display_name (case-insensitive) – fallback for guest members without email
  */
-export function usePeopleBalances(userId: string | undefined) {
+export function usePeopleBalances(userId: string | undefined, excludedGroupIds?: Set<string>) {
+  const excludedKey = excludedGroupIds ? [...excludedGroupIds].sort().join(',') : ''
   return useQuery({
-    queryKey: ['people_balances', userId],
+    queryKey: ['people_balances', userId, excludedKey],
     enabled: !!userId,
     staleTime: 1000 * 30,
     queryFn: async () => {
@@ -47,12 +48,13 @@ export function usePeopleBalances(userId: string | undefined) {
         user_id: string
         role: string
         share_amount_group_currency: number | null
-        expense: { group_currency: string } | null
+        expense: { group_id: string; group_currency: string } | null
       }
 
       type PayRow = {
         from_user_id: string
         to_user_id: string
+        group_id: string
         group_amount: number
         group_currency: string
       }
@@ -63,14 +65,14 @@ export function usePeopleBalances(userId: string | undefined) {
           ? supabase
               .from('expense_participants')
               .select(
-                'expense_id, user_id, role, share_amount_group_currency, expense:expenses!inner(group_currency)',
+                'expense_id, user_id, role, share_amount_group_currency, expense:expenses!inner(group_id, group_currency)',
               )
               .in('expense_id', expenseIds)
           : Promise.resolve({ data: [] as PartRow[], error: null }),
 
         supabase
           .from('payments')
-          .select('from_user_id, to_user_id, group_amount, group_currency')
+          .select('from_user_id, to_user_id, group_id, group_amount, group_currency')
           .or(`from_user_id.eq.${userId!},to_user_id.eq.${userId!}`),
       ])
 
@@ -95,6 +97,8 @@ export function usePeopleBalances(userId: string | undefined) {
       }
 
       for (const rows of Object.values(byExpense)) {
+        const groupId = rows[0]?.expense?.group_id
+        if (groupId && excludedGroupIds?.has(groupId)) continue
         const currency = rows[0]?.expense?.group_currency ?? 'USD'
 
         const myPayer = rows.find(r => r.user_id === userId && r.role === 'payer')
@@ -120,6 +124,7 @@ export function usePeopleBalances(userId: string | undefined) {
 
       // Payments
       for (const pay of allPays) {
+        if (excludedGroupIds?.has(pay.group_id)) continue
         if (pay.from_user_id === userId) {
           // I paid someone → they owe me more (or I owe them less)
           addNet(pay.to_user_id, pay.group_currency, pay.group_amount)

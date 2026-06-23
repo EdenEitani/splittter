@@ -25,7 +25,7 @@ export function Layout({
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-full bg-slate-50 flex">
       {/* ── Desktop Sidebar ─────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-60 bg-white border-r border-gray-100 sticky top-0 h-screen flex-shrink-0">
         {/* Logo */}
@@ -69,7 +69,7 @@ export function Layout({
       </aside>
 
       {/* ── Main area ───────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Mobile header */}
         {(title || showBack) && (
           <header className="md:hidden sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -132,7 +132,7 @@ export function Layout({
         )}
 
         {/* Content */}
-        <main className={clsx('flex-1', !noPad && 'p-4 md:p-6 md:max-w-4xl md:w-full')}>
+        <main className={clsx('flex-1 overflow-y-auto', !noPad && 'p-4 md:p-6 md:max-w-4xl md:w-full')}>
           {children}
         </main>
 
