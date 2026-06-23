@@ -132,7 +132,7 @@ export function Layout({
         )}
 
         {/* Content */}
-        <main className={clsx('flex-1 overflow-y-auto', !noPad && 'p-4 md:p-6 md:max-w-4xl md:w-full')}>
+        <main className={clsx('flex-1 overflow-y-auto overflow-x-hidden', !noPad && 'p-4 md:p-6 md:max-w-4xl md:w-full')}>
           {children}
         </main>
 
