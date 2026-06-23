@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { formatMoney } from '@/lib/money'
-import { simplifyDebts } from '@/lib/balance'
+import { simplifyDebts, computePairwiseDebts } from '@/lib/balance'
 import { ArrowRight, CheckCircle } from 'lucide-react'
 import { clsx } from 'clsx'
-import type { Expense, UserBalance } from '@/types'
+import type { Expense, Payment, UserBalance } from '@/types'
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
 
@@ -124,6 +125,7 @@ interface BalanceSummaryProps {
   currency: string
   currentUserId?: string
   expenses?: Expense[]
+  payments?: Payment[]
   onSettle?: (fromId: string, toId: string) => void
 }
 
@@ -132,9 +134,13 @@ export function BalanceSummary({
   currency,
   currentUserId,
   expenses = [],
+  payments = [],
   onSettle,
 }: BalanceSummaryProps) {
-  const debts = simplifyDebts(balances)
+  const [simplified, setSimplified] = useState(true)
+  const debts = simplified
+    ? simplifyDebts(balances)
+    : computePairwiseDebts(expenses, payments, currency)
   const allSettled = debts.length === 0
 
   // ── Build category chart data ───────────────────────────────────────────────
@@ -226,10 +232,22 @@ export function BalanceSummary({
         </div>
       )}
 
-      {/* Simplified debts */}
+      {/* Debts section */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b border-gray-50">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-700">Who pays whom</h3>
+          <button
+            onClick={() => setSimplified(s => !s)}
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+              simplified
+                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            <span className={clsx('w-1.5 h-1.5 rounded-full', simplified ? 'bg-blue-500' : 'bg-gray-400')} />
+            {simplified ? 'Simplified' : 'Detailed'}
+          </button>
         </div>
         {allSettled ? (
           <div className="px-4 py-5 flex items-center gap-2 text-emerald-600">

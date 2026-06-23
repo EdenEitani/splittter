@@ -335,6 +335,7 @@ export function GroupDetailPage() {
             currency={group.base_currency}
             currentUserId={user?.id}
             expenses={expenses ?? []}
+            payments={payments ?? []}
             onSettle={(from, to) => {
               window.location.href = `/group/${groupId}/add-payment?from=${from}&to=${to}`
             }}
