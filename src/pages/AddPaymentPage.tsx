@@ -190,7 +190,7 @@ export function AddPaymentPage() {
             placeholder="e.g. Venmo payment for April rent"
             value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            className="w-full text-sm text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300 resize-none"
+            className="w-full text-base text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300 resize-none"
             rows={2}
           />
         </div>

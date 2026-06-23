@@ -129,7 +129,7 @@ export function AddExpensePage() {
 
     ;(async () => {
       try {
-        await ensureDailyRates(groupCurrency)
+        await ensureDailyRates(groupCurrency, form.original_currency)
         const rate = await getFxRate(form.original_currency, groupCurrency, todayISO())
         if (!cancelled) setFxRate(rate)
       } catch {
@@ -400,7 +400,7 @@ export function AddExpensePage() {
                       const gc = group?.base_currency
                       if (!gc) return
                       setFxLoading(true); setFxRate(null); setFxError(false)
-                      ensureDailyRates(gc)
+                      ensureDailyRates(gc, form.original_currency)
                         .then(() => getFxRate(form.original_currency, gc, todayISO()))
                         .then(r => setFxRate(r))
                         .catch(() => setFxError(true))
@@ -509,7 +509,7 @@ export function AddExpensePage() {
                           newAmounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
                           setForm(f => ({ ...f, payer_amounts: newAmounts }))
                         }}
-                        className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-24 text-base text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
                         step="0.01"
                         min="0"
                       />
@@ -610,7 +610,7 @@ export function AddExpensePage() {
                               newAmounts[lastId] = Math.max(0, total - nonLastSum).toFixed(2)
                               setForm(f => ({ ...f, custom_amounts: newAmounts }))
                             }}
-                            className="w-24 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-24 text-base text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
                             step="0.01"
                             min="0"
                             max={(() => {
@@ -664,7 +664,7 @@ export function AddExpensePage() {
                                 newPercents[lastId] = Math.max(0, 100 - nonLastSum).toFixed(1)
                                 setForm(f => ({ ...f, custom_percents: newPercents }))
                               }}
-                              className="w-16 text-sm text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-16 text-base text-right border border-gray-200 rounded-lg h-9 px-2 outline-none focus:ring-2 focus:ring-blue-500"
                               step="1"
                               min="0"
                               max={(() => {
@@ -715,7 +715,7 @@ export function AddExpensePage() {
             placeholder="Any additional details…"
             value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            className="w-full text-sm text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300 resize-none"
+            className="w-full text-base text-gray-900 bg-transparent border-0 outline-none placeholder:text-gray-300 resize-none"
             rows={2}
           />
         </div>

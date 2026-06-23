@@ -208,22 +208,47 @@ export function useAddMember() {
       name: string
       email?: string
     }) => {
-      // Create a guest profile (no auth account needed)
-      const guestId = crypto.randomUUID()
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: guestId,
-          display_name: name.trim(),
-          email: email?.trim().toLowerCase() || null,
-          is_guest: true,
-        })
+      const normalizedEmail = email?.trim().toLowerCase() || null
 
-      if (profileError) throw profileError
+      let userId: string
+
+      // If email provided, check for existing profile first
+      if (normalizedEmail) {
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', normalizedEmail)
+          .maybeSingle()
+
+        if (existing) {
+          userId = existing.id
+          // Already in group? Skip insert silently
+          const { data: alreadyMember } = await supabase
+            .from('group_members')
+            .select('user_id')
+            .eq('group_id', groupId)
+            .eq('user_id', userId)
+            .maybeSingle()
+
+          if (alreadyMember) return
+        } else {
+          userId = crypto.randomUUID()
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({ id: userId, display_name: name.trim(), email: normalizedEmail, is_guest: true })
+          if (profileError) throw profileError
+        }
+      } else {
+        userId = crypto.randomUUID()
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({ id: userId, display_name: name.trim(), email: null, is_guest: true })
+        if (profileError) throw profileError
+      }
 
       const { error } = await supabase
         .from('group_members')
-        .insert({ group_id: groupId, user_id: guestId, role: 'member' })
+        .insert({ group_id: groupId, user_id: userId, role: 'member' })
 
       if (error) throw error
     },

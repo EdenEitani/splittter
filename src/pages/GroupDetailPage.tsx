@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Receipt, CreditCard, Users, Settings, RefreshCw, Search, X } from 'lucide-react'
+import { Receipt, CreditCard, Users, Settings, RefreshCw, Search, X, Download } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
 import { PaymentItem } from '@/components/PaymentItem'
@@ -9,6 +9,7 @@ import { useGroup, useGroupMembers } from '@/hooks/useGroups'
 import { useExpenses, useDeleteExpense } from '@/hooks/useExpenses'
 import { usePayments, useDeletePayment } from '@/hooks/usePayments'
 import { computeBalances } from '@/lib/balance'
+import { fromMinorUnits } from '@/lib/money'
 import { useAuth } from '@/hooks/useAuth'
 import { todayISO } from '@/lib/fx'
 import { useRecurringExpenses, useGenerateDueExpenses } from '@/hooks/useRecurringExpenses'
@@ -80,6 +81,93 @@ export function GroupDetailPage() {
     setPendingDelete(null)
   }
 
+  function handleExportCSV() {
+    if (!group) return
+    const rows: string[][] = []
+    rows.push([
+      'date', 'type', 'description', 'category',
+      'original_amount', 'original_currency',
+      'group_amount', 'group_currency',
+      'fx_rate', 'fx_date',
+      'paid_by', 'paid_to', 'split_details', 'notes',
+    ])
+    const allItems = [
+      ...(expenses ?? []).map(e => ({ kind: 'expense' as const, item: e })),
+      ...(payments ?? []).map(p => ({ kind: 'payment' as const, item: p })),
+    ].sort((a, b) => a.item.occurred_at.localeCompare(b.item.occurred_at))
+
+    for (const { kind, item } of allItems) {
+      if (kind === 'expense') {
+        const e = item
+        const payers = (e.participants ?? []).filter(p => p.role === 'payer')
+        const participants = (e.participants ?? []).filter(p => p.role === 'participant')
+        const paidBy = payers.map(p => {
+          const name = p.profile?.display_name ?? p.user_id
+          if (payers.length > 1 && p.share_amount_group_currency != null)
+            return `${name} (${fromMinorUnits(p.share_amount_group_currency, e.group_currency).toFixed(2)})`
+          return name
+        }).join('; ')
+        const splitDetails = participants.map(p => {
+          const name = p.profile?.display_name ?? p.user_id
+          if (p.share_amount_group_currency != null)
+            return `${name}: ${fromMinorUnits(p.share_amount_group_currency, e.group_currency).toFixed(2)} ${e.group_currency}`
+          return name
+        }).join('; ')
+        rows.push([
+          e.occurred_at.slice(0, 10),
+          'expense',
+          e.label,
+          e.category?.name ?? '',
+          fromMinorUnits(e.original_amount, e.original_currency).toFixed(2),
+          e.original_currency,
+          fromMinorUnits(e.group_amount, e.group_currency).toFixed(2),
+          e.group_currency,
+          e.fx_rate === 1 ? '1' : e.fx_rate.toFixed(6),
+          e.fx_date,
+          paidBy,
+          '',
+          splitDetails,
+          e.notes ?? '',
+        ])
+      } else {
+        const p = item
+        rows.push([
+          p.occurred_at.slice(0, 10),
+          'payment',
+          `${p.from_profile?.display_name ?? ''} to ${p.to_profile?.display_name ?? ''}`,
+          '',
+          fromMinorUnits(p.original_amount, p.original_currency).toFixed(2),
+          p.original_currency,
+          fromMinorUnits(p.group_amount, p.group_currency).toFixed(2),
+          p.group_currency,
+          p.fx_rate === 1 ? '1' : p.fx_rate.toFixed(6),
+          p.fx_date,
+          p.from_profile?.display_name ?? '',
+          p.to_profile?.display_name ?? '',
+          '',
+          p.notes ?? '',
+        ])
+      }
+    }
+
+    const csv = rows.map(row =>
+      row.map(cell => {
+        const s = String(cell)
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? `"${s.replace(/"/g, '""')}"`
+          : s
+      }).join(',')
+    ).join('\n')
+
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${group.name}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (loadingGroup) {
     return (
       <Layout showBack title="Loading…">
@@ -137,13 +225,22 @@ export function GroupDetailPage() {
       backTo="/"
       noPad
       headerRight={
-        <Link
-          to={`/group/${groupId}/settings`}
-          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-500"
-          title="Group settings"
-        >
-          <Settings size={18} />
-        </Link>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleExportCSV}
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+            title="Export CSV"
+          >
+            <Download size={18} />
+          </button>
+          <Link
+            to={`/group/${groupId}/settings`}
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+            title="Group settings"
+          >
+            <Settings size={18} />
+          </Link>
+        </div>
       }
     >
       {/* Tab bar */}
@@ -177,7 +274,7 @@ export function GroupDetailPage() {
                   placeholder="Search expenses & payments…"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full h-10 pl-9 pr-8 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-300"
+                  className="w-full h-10 pl-9 pr-8 text-base border border-gray-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-300"
                 />
                 {searchQuery && (
                   <button

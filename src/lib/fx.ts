@@ -6,19 +6,21 @@ export function todayISO(): string {
 }
 
 /**
- * Ensure today's rates for the group's base currency (and USD as cross-rate
- * fallback) exist in the DB.
+ * Ensure today's rates for the group base currency, the expense currency,
+ * and USD (cross-rate fallback) all exist in the DB.
  *
- * Pass the GROUP's base currency (e.g. 'ILS'), not the expense currency.
- * This stores ILS-based rates, so any expense currency → ILS conversion is
- * available via the inverse lookup (rates_json['GBP'] = 0.243 → 1/0.243 ≈ 4.11).
+ * Storing the expense currency directly avoids relying solely on inverse
+ * lookups, which fail silently when the group-base fetch hits an API error.
  */
-export async function ensureDailyRates(groupCurrency: string): Promise<void> {
+export async function ensureDailyRates(groupCurrency: string, expenseCurrency?: string): Promise<void> {
   const date = todayISO()
   const upper = groupCurrency.toUpperCase()
+  const expenseUpper = expenseCurrency?.toUpperCase()
 
-  // Always also ensure USD — universal cross-rate base for exotic currencies
-  const currenciesToEnsure = upper === 'USD' ? ['USD'] : [upper, 'USD']
+  const set = new Set<string>(['USD', upper])
+  if (expenseUpper && expenseUpper !== upper) set.add(expenseUpper)
+
+  const currenciesToEnsure = Array.from(set)
 
   await Promise.all(
     currenciesToEnsure.map(async (currency) => {
