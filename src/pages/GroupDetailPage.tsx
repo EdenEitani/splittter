@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Receipt, CreditCard, Users, Settings, RefreshCw, Search, X, Download } from 'lucide-react'
+import { Receipt, CreditCard, Users, Settings, RefreshCw, Search, X, Download, Plus } from 'lucide-react'
 import { Layout } from '@/components/Layout'
 import { ExpenseItem } from '@/components/ExpenseItem'
 import { PaymentItem } from '@/components/PaymentItem'
@@ -23,6 +23,7 @@ export function GroupDetailPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('activity')
   const [searchQuery, setSearchQuery] = useState('')
+  const [fabOpen, setFabOpen] = useState(false)
 
   // Undo-delete state
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -395,33 +396,76 @@ export function GroupDetailPage() {
         </div>
       )}
 
+      {/* FAB backdrop */}
+      {fabOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setFabOpen(false)} />
+      )}
+
       {/* FABs */}
-      <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 flex flex-col gap-3 z-50">
-        <Link
-          to={`/group/${groupId}/recurring`}
-          className="flex items-center gap-2 bg-white text-gray-600 border border-gray-200 shadow-sm px-4 h-10 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors self-end"
-        >
-          <RefreshCw size={15} className="text-gray-400" />
-          Recurring{activeRecurringCount > 0 && (
-            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-              {activeRecurringCount}
-            </span>
-          )}
-        </Link>
-        <Link
-          to={`/group/${groupId}/add-payment`}
-          className="flex items-center gap-2 bg-white text-gray-700 border border-gray-200 shadow-md px-4 h-11 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors"
-        >
-          <CreditCard size={18} className="text-green-600" />
-          Settle up
-        </Link>
-        <Link
-          to={`/group/${groupId}/add-expense`}
-          className="flex items-center gap-2 bg-blue-600 text-white shadow-lg px-5 h-12 rounded-full font-semibold text-base hover:bg-blue-700 transition-colors"
-        >
-          <Receipt size={20} />
-          Add expense
-        </Link>
+      <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50">
+        <div className="flex flex-col items-end gap-2.5">
+          {/* Sub-actions */}
+          <div className={clsx(
+            'flex flex-col items-end gap-2 transition-all duration-200 origin-bottom',
+            fabOpen ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-2'
+          )}>
+            {/* Recurring */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-800 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-100 whitespace-nowrap">
+                Recurring{activeRecurringCount > 0 && (
+                  <span className="ml-1.5 bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    {activeRecurringCount}
+                  </span>
+                )}
+              </span>
+              <Link
+                to={`/group/${groupId}/recurring`}
+                className="w-11 h-11 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors flex-shrink-0"
+                onClick={() => setFabOpen(false)}
+              >
+                <RefreshCw size={17} />
+              </Link>
+            </div>
+            {/* Settle up */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-800 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-100 whitespace-nowrap">
+                Settle up
+              </span>
+              <Link
+                to={`/group/${groupId}/add-payment`}
+                className="w-11 h-11 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-green-600 hover:bg-gray-50 transition-colors flex-shrink-0"
+                onClick={() => setFabOpen(false)}
+              >
+                <CreditCard size={17} />
+              </Link>
+            </div>
+          </div>
+
+          {/* Bottom row: secondary circle + primary */}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setFabOpen(o => !o)}
+              className={clsx(
+                'w-11 h-11 rounded-full border shadow-md flex items-center justify-center transition-all duration-200',
+                fabOpen
+                  ? 'bg-gray-800 border-gray-700 text-white'
+                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+              )}
+            >
+              <Plus
+                size={20}
+                className={clsx('transition-transform duration-200', fabOpen && 'rotate-45')}
+              />
+            </button>
+            <Link
+              to={`/group/${groupId}/add-expense`}
+              className="flex items-center gap-2 bg-blue-600 text-white shadow-lg px-5 h-12 rounded-full font-semibold text-base hover:bg-blue-700 transition-colors"
+            >
+              <Receipt size={20} />
+              Add expense
+            </Link>
+          </div>
+        </div>
       </div>
     </Layout>
   )
