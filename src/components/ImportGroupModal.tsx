@@ -71,7 +71,7 @@ function detectFormat(content: string): CsvFormat {
   for (const line of lines) {
     if (line.startsWith('#')) return 'purrse'
     const cols = parseCSVLine(line)
-    const c0 = cols[0]?.toLowerCase().trim()
+    const c0 = cols[0]?.replace(/^﻿/, '').toLowerCase().trim()
     const c1 = cols[1]?.toLowerCase().trim()
     const c4 = cols[4]?.toLowerCase().trim()
     if (c0 === 'date' && c1 === 'description') return 'splitwise'
@@ -407,7 +407,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
     const reader = new FileReader()
     reader.onload = ev => {
       try {
-        const content = ev.target?.result as string
+        const content = (ev.target?.result as string).replace(/^﻿/, '')
         const fmt = detectFormat(content)
         setFormat(fmt)
 
