@@ -37,6 +37,9 @@ interface ParsedExpense {
   currency: string
   payerName: string
   memberAmounts: Record<string, number>  // each member's share (positive)
+  groupAmount?: number  // pre-computed decimal in group currency (skips FX fetch)
+  fxRate?: number
+  fxDate?: string
 }
 
 interface ParsedPayment {
@@ -46,6 +49,9 @@ interface ParsedPayment {
   fromName: string
   toName: string
   notes: string
+  groupAmount?: number
+  fxRate?: number
+  fxDate?: string
 }
 
 interface ParsedCSV {
@@ -58,7 +64,7 @@ interface ParsedCSV {
 
 // ── Format detection ──────────────────────────────────────────────────────────
 
-type CsvFormat = 'splitwise' | 'purrse' | 'unknown'
+type CsvFormat = 'splitwise' | 'purrse' | 'splittter' | 'unknown'
 
 function detectFormat(content: string): CsvFormat {
   const lines = content.split(/\r?\n/).filter(l => l.trim()).slice(0, 5)
@@ -67,7 +73,9 @@ function detectFormat(content: string): CsvFormat {
     const cols = parseCSVLine(line)
     const c0 = cols[0]?.toLowerCase().trim()
     const c1 = cols[1]?.toLowerCase().trim()
+    const c4 = cols[4]?.toLowerCase().trim()
     if (c0 === 'date' && c1 === 'description') return 'splitwise'
+    if (c0 === 'date' && c1 === 'type' && c4 === 'original_amount') return 'splittter'
     if (c0 === 'date' && c1 === 'type') return 'purrse'
   }
   return 'unknown'
@@ -131,6 +139,62 @@ function parsePurrseCSV(content: string): ParsedCSV {
     }
   }
   return { groupName, currency, members, expenses, payments }
+}
+
+// ── Splittter own-export parser ───────────────────────────────────────────────
+// Header: date,type,description,category,original_amount,original_currency,
+//         group_amount,group_currency,fx_rate,fx_date,paid_by,paid_to,split_details,notes
+
+function parseSplittterCSV(content: string): ReturnType<typeof parseSplitwiseCSV> {
+  const lines = content.split(/\r?\n/)
+  let headerParsed = false
+  const memberSet = new Set<string>()
+  const expenses: ParsedExpense[] = []
+  const payments: ParsedPayment[] = []
+  let detectedCurrency = 'ILS'
+
+  for (const line of lines) {
+    if (!line.trim()) continue
+    if (!headerParsed) { headerParsed = true; continue }
+
+    const parts = parseCSVLine(line)
+    if (parts.length < 11) continue
+
+    const date = parts[0]?.trim()
+    const type = parts[1]?.trim().toLowerCase()
+    const description = parts[2]?.trim()
+    const category = parts[3]?.trim() || 'Other'
+    const originalAmount = parseFloat(parts[4]) || 0
+    const originalCurrency = parts[5]?.trim() || 'ILS'
+    const groupAmount = parseFloat(parts[6]) || 0
+    const groupCurrency = parts[7]?.trim() || 'ILS'
+    const fxRate = parseFloat(parts[8]) || 1
+    const fxDate = parts[9]?.trim() || todayISO()
+    const paidBy = parts[10]?.trim()
+    const paidTo = parts[11]?.trim()
+    const splitDetails = parts[12]?.trim()
+    const notes = parts[13]?.trim() || ''
+
+    detectedCurrency = groupCurrency
+
+    if (type === 'expense' && paidBy && originalAmount > 0 && description) {
+      memberSet.add(paidBy)
+      const memberAmounts: Record<string, number> = {}
+      if (splitDetails) {
+        for (const seg of splitDetails.split(';')) {
+          const m = seg.trim().match(/^(.+):\s*([\d.]+)\s+\S+$/)
+          if (m) { memberSet.add(m[1].trim()); memberAmounts[m[1].trim()] = parseFloat(m[2]) }
+        }
+      }
+      expenses.push({ date, description, category, amount: originalAmount, currency: originalCurrency, payerName: paidBy, memberAmounts, groupAmount, fxRate, fxDate })
+    } else if (type === 'payment' && paidBy && paidTo && originalAmount > 0) {
+      memberSet.add(paidBy)
+      memberSet.add(paidTo)
+      payments.push({ date, amount: originalAmount, currency: originalCurrency, fromName: paidBy, toName: paidTo, notes, groupAmount, fxRate, fxDate })
+    }
+  }
+
+  return { members: Array.from(memberSet), expenses, payments, detectedCurrency }
 }
 
 // ── Splitwise parser ──────────────────────────────────────────────────────────
@@ -352,15 +416,15 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
           if (!result.members.length) { setErrorMsg('No members found in CSV.'); setStep('error'); return }
           setParsed(result)
           setStep('preview')
-        } else if (fmt === 'splitwise') {
-          const raw = parseSplitwiseCSV(content)
+        } else if (fmt === 'splitwise' || fmt === 'splittter') {
+          const raw = fmt === 'splittter' ? parseSplittterCSV(content) : parseSplitwiseCSV(content)
           if (!raw.members.length) { setErrorMsg('No members found in CSV.'); setStep('error'); return }
           setSwRaw(raw)
           setSwCurrency(raw.detectedCurrency || 'USD')
           setSwGroupName('')
           setStep('configure')
         } else {
-          setErrorMsg('Unrecognised CSV format. Supported: Splitwise, Purrse.')
+          setErrorMsg('Unrecognised CSV format. Supported: Splitwise, Purrse, or Splittter export.')
           setStep('error')
         }
       } catch {
@@ -394,7 +458,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
       setProgress('Creating group…')
       const { data: group, error: groupErr } = await supabase
         .from('groups')
-        .insert({ name: parsed.groupName, type: (format === 'splitwise' ? swType : 'custom') as GroupType, base_currency: parsed.currency, created_by: user.id })
+        .insert({ name: parsed.groupName, type: (format === 'purrse' ? 'custom' : swType) as GroupType, base_currency: parsed.currency, created_by: user.id })
         .select().single()
       if (groupErr) throw groupErr
 
@@ -424,7 +488,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
       const { data: categories } = await supabase.from('categories').select('id, name')
       const catList = (categories ?? []) as { id: string; name: string }[]
 
-      const fxDate = todayISO()
+      const fallbackFxDate = todayISO()
       let expCount = 0
 
       for (const exp of parsed.expenses) {
@@ -433,9 +497,12 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
         const payerId = resolveId(exp.payerName, memberIdMap)
         if (!payerId) continue
 
-        const fxRate = await getFxRate(exp.currency, parsed.currency, fxDate)
         const originalMinor = toMinorUnits(exp.amount, exp.currency)
-        const groupMinor = convertAmount(originalMinor, fxRate)
+        const usedFxRate = exp.fxRate ?? await getFxRate(exp.currency, parsed.currency, fallbackFxDate)
+        const groupMinor = exp.groupAmount != null
+          ? toMinorUnits(exp.groupAmount, parsed.currency)
+          : convertAmount(originalMinor, usedFxRate)
+        const usedFxDate = exp.fxDate ?? fallbackFxDate
         const categoryId = fuzzyMatchCategory(exp.category, catList)
 
         const { data: expense, error: expErr } = await supabase
@@ -444,7 +511,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
             group_id: group.id, created_by: user.id, label: exp.description,
             original_amount: originalMinor, original_currency: exp.currency,
             group_amount: groupMinor, group_currency: parsed.currency,
-            fx_rate: fxRate, fx_date: fxDate,
+            fx_rate: usedFxRate, fx_date: usedFxDate,
             category_id: categoryId, category_confidence: null,
             occurred_at: exp.date, notes: null,
           })
@@ -476,15 +543,18 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
         const fromId = resolveId(pay.fromName, memberIdMap)
         const toId = resolveId(pay.toName, memberIdMap)
         if (!fromId || !toId) continue
-        const fxRate = await getFxRate(pay.currency, parsed.currency, fxDate)
         const originalMinor = toMinorUnits(pay.amount, pay.currency)
-        const groupMinor = convertAmount(originalMinor, fxRate)
+        const usedFxRate = pay.fxRate ?? await getFxRate(pay.currency, parsed.currency, fallbackFxDate)
+        const groupMinor = pay.groupAmount != null
+          ? toMinorUnits(pay.groupAmount, parsed.currency)
+          : convertAmount(originalMinor, usedFxRate)
+        const usedFxDate = pay.fxDate ?? fallbackFxDate
         await supabase.from('payments').insert({
           group_id: group.id, created_by: user.id,
           from_user_id: fromId, to_user_id: toId,
           original_amount: originalMinor, original_currency: pay.currency,
           group_amount: groupMinor, group_currency: parsed.currency,
-          fx_rate: fxRate, fx_date: fxDate,
+          fx_rate: usedFxRate, fx_date: usedFxDate,
           occurred_at: pay.date, notes: pay.notes || null,
         })
       }
@@ -515,7 +585,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
           {step === 'upload' && (
             <div className="space-y-4">
               <p className="text-sm text-gray-500">
-                Import a group from a CSV export. Both <span className="font-medium text-gray-700">Splitwise</span> and <span className="font-medium text-gray-700">Purrse</span> formats are supported.
+                Import a group from a CSV export. Supports <span className="font-medium text-gray-700">Splittter</span>, <span className="font-medium text-gray-700">Splitwise</span>, and <span className="font-medium text-gray-700">Purrse</span> formats.
               </p>
               <button
                 onClick={() => fileRef.current?.click()}
@@ -526,7 +596,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
                 </div>
                 <div className="text-center">
                   <p className="font-medium text-gray-700">Click to select CSV file</p>
-                  <p className="text-xs text-gray-400 mt-1">Splitwise or Purrse export format</p>
+                  <p className="text-xs text-gray-400 mt-1">Splittter, Splitwise, or Purrse export format</p>
                 </div>
               </button>
               <input ref={fileRef} type="file" accept=".csv,.CSV" className="hidden" onChange={handleFileChange} />
@@ -537,7 +607,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
           {step === 'configure' && swRaw && (
             <div className="space-y-5">
               <div className="bg-blue-50 rounded-xl p-3 text-sm text-blue-700 font-medium">
-                Splitwise export detected · {swRaw.members.length} members · {swRaw.expenses.length} expenses · {swRaw.payments.length} payments
+                {format === 'splittter' ? 'Splittter export' : 'Splitwise export'} detected · {swRaw.members.length} members · {swRaw.expenses.length} expenses · {swRaw.payments.length} payments
               </div>
 
               {/* Group name */}
@@ -696,7 +766,7 @@ export function ImportGroupModal({ onClose }: ImportGroupModalProps) {
 
           {step === 'preview' && (
             <>
-              <Button variant="secondary" onClick={() => setStep(format === 'splitwise' ? 'configure' : 'upload')}>Back</Button>
+              <Button variant="secondary" onClick={() => setStep(format === 'purrse' ? 'upload' : 'configure')}>Back</Button>
               <Button onClick={handleImport}>
                 <Upload size={15} className="mr-1.5" />
                 Import {(parsed?.expenses.length ?? 0) + (parsed?.payments.length ?? 0)} items
