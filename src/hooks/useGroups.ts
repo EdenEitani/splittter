@@ -40,13 +40,22 @@ export function useGroups() {
         if (error) throw error
         if (!data?.length) return [] as GroupWithMembers[]
 
-        // Fetch the earliest expense date per group (for imported groups whose
-        // created_at is "now" but expenses are from the past)
-        const { data: expDates } = await supabase
-          .from('expenses')
-          .select('group_id, occurred_at')
-          .in('group_id', data.map(g => g.id))
-          .order('occurred_at', { ascending: true })
+        // Fetch latest expense/payment date per group (last activity), plus
+        // earliest expense date (for imported groups whose created_at is "now"
+        // but expenses are from the past, used as a fallback floor).
+        const groupIds = data.map(g => g.id)
+        const [{ data: expDates }, { data: paymentDates }] = await Promise.all([
+          supabase
+            .from('expenses')
+            .select('group_id, occurred_at')
+            .in('group_id', groupIds)
+            .order('occurred_at', { ascending: true }),
+          supabase
+            .from('payments')
+            .select('group_id, occurred_at')
+            .in('group_id', groupIds)
+            .order('occurred_at', { ascending: true }),
+        ])
 
         // Build min-date map: first row per group (already sorted asc)
         const minExpDate: Record<string, string> = {}
@@ -54,15 +63,31 @@ export function useGroups() {
           if (!minExpDate[e.group_id]) minExpDate[e.group_id] = e.occurred_at
         }
 
-        // Sort: use min expense date if earlier than created_at (imported groups),
-        // otherwise use created_at. Descending (most recent first).
+        // Build max-date map (last activity) across expenses + payments
+        const lastActivity: Record<string, string> = {}
+        for (const e of expDates ?? []) {
+          if (!lastActivity[e.group_id] || e.occurred_at > lastActivity[e.group_id]) {
+            lastActivity[e.group_id] = e.occurred_at
+          }
+        }
+        for (const p of paymentDates ?? []) {
+          if (!lastActivity[p.group_id] || p.occurred_at > lastActivity[p.group_id]) {
+            lastActivity[p.group_id] = p.occurred_at
+          }
+        }
+
+        // Sort by last activity (latest expense/payment), falling back to
+        // created_at (or earliest expense date, whichever is earlier) for
+        // groups with no transactions yet. Descending (most recent first).
         const sorted = [...data].sort((a, b) => {
-          const dA = minExpDate[a.id] && minExpDate[a.id] < a.created_at
+          const floorA = minExpDate[a.id] && minExpDate[a.id] < a.created_at
             ? minExpDate[a.id]
             : a.created_at
-          const dB = minExpDate[b.id] && minExpDate[b.id] < b.created_at
+          const floorB = minExpDate[b.id] && minExpDate[b.id] < b.created_at
             ? minExpDate[b.id]
             : b.created_at
+          const dA = lastActivity[a.id] ?? floorA
+          const dB = lastActivity[b.id] ?? floorB
           return dB.localeCompare(dA)
         })
 

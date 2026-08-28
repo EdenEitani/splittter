@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Upload, ChevronDown, ChevronRight } from 'lucide-react'
 import { useGroups, useUserGroupsBalance, useGroupsYearlyTotals } from '@/hooks/useGroups'
@@ -10,6 +10,22 @@ import { ImportGroupModal } from '@/components/ImportGroupModal'
 import { useAuth } from '@/hooks/useAuth'
 import { formatMoney } from '@/lib/money'
 import type { GroupWithMembers } from '@/types'
+
+type SortOrder = 'activity' | 'created_desc' | 'created_asc' | 'name_asc'
+
+const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
+  { value: 'activity', label: 'Recent activity' },
+  { value: 'created_desc', label: 'Newest created' },
+  { value: 'created_asc', label: 'Oldest created' },
+  { value: 'name_asc', label: 'Name (A–Z)' },
+]
+
+const SORT_STORAGE_KEY = 'groupSortOrder'
+
+function loadSortOrder(): SortOrder {
+  const stored = localStorage.getItem(SORT_STORAGE_KEY)
+  return SORT_OPTIONS.some(o => o.value === stored) ? (stored as SortOrder) : 'activity'
+}
 
 export function GroupsPage() {
   const { data: groups, isLoading } = useGroups()
@@ -48,6 +64,22 @@ export function GroupsPage() {
 
   const hasGroups = !isLoading && (groups?.length ?? 0) > 0
   const [balanceOpen, setBalanceOpen] = useState(false)
+  const [sortOrder, setSortOrder] = useState<SortOrder>(loadSortOrder)
+
+  const sortedGroups = useMemo(() => {
+    const list = (groups ?? []) as GroupWithMembers[]
+    if (sortOrder === 'activity') return list
+    const copy = [...list]
+    if (sortOrder === 'created_desc') copy.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    else if (sortOrder === 'created_asc') copy.sort((a, b) => a.created_at.localeCompare(b.created_at))
+    else if (sortOrder === 'name_asc') copy.sort((a, b) => a.name.localeCompare(b.name))
+    return copy
+  }, [groups, sortOrder])
+
+  const handleSortChange = (order: SortOrder) => {
+    setSortOrder(order)
+    localStorage.setItem(SORT_STORAGE_KEY, order)
+  }
 
   return (
     <Layout
@@ -231,9 +263,18 @@ export function GroupsPage() {
         <>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900">Groups</h2>
+            <select
+              value={sortOrder}
+              onChange={e => handleSortChange(e.target.value as SortOrder)}
+              className="text-sm text-gray-600 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              {SORT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(groups as GroupWithMembers[]).map(g => {
+            {sortedGroups.map(g => {
               const b = balanceMap?.[g.id]
               return (
                 <GroupCard
